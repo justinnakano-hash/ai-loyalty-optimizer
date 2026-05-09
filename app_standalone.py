@@ -12,55 +12,65 @@ st.set_page_config(
 # ── CSS ──
 st.markdown("""
 <style>
-.block-container { max-width: 900px !important; padding-top: 1.5rem !important; padding-bottom: 2rem !important; }
+.block-container { max-width:860px !important; padding-top:1.5rem !important; }
 
-/* Profile table */
-.prog-table { width:100%; border-collapse:collapse; font-size:14px; }
-.prog-table th { font-size:11px; font-weight:600; color:#999; text-transform:uppercase;
-    letter-spacing:.05em; padding:8px 12px; border-bottom:2px solid #e8e8e8;
-    text-align:left; background:#fafafa; }
-.prog-table td { padding:10px 12px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
-.prog-table tr:last-child td { border-bottom:none; }
-.prog-table tr:hover td { background:#fafafa; }
-.dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:8px; vertical-align:middle; }
-.status-pill { display:inline-block; padding:2px 10px; border-radius:20px; font-size:12px;
-    font-weight:500; background:#f0f0f0; color:#555; }
-.status-pill.active { background:#e6f4ea; color:#1e5c2a; }
-.cat-header { font-size:11px; font-weight:700; color:#999; text-transform:uppercase;
-    letter-spacing:.06em; padding:14px 12px 6px; }
+/* Profile rows */
+.prog-row { display:flex; align-items:center; gap:12px; padding:10px 2px;
+    border-bottom:1px solid #f0f0f0; }
+.prog-row:last-child { border-bottom:none; }
+.prog-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.prog-name { font-size:13px; font-weight:600; color:#111; flex:2; min-width:0; }
+.prog-bal  { font-size:13px; color:#333; flex:1; white-space:nowrap; }
+.prog-pill { display:inline-block; padding:2px 10px; border-radius:20px;
+    font-size:11px; font-weight:500; flex:1; white-space:nowrap; }
+.prog-pill.std { background:#f0f0f0; color:#666; }
+.prog-pill.act { background:#e6f4ea; color:#1e5c2a; }
+.prog-actions { display:flex; gap:6px; flex-shrink:0; }
 
-/* Add form */
-.add-form { background:#fafafa; border:1px solid #e8e8e8; border-radius:12px;
-    padding:1.25rem; margin-top:1.5rem; }
+/* Icon buttons — rendered as <a> tags to avoid st.button wrapping issues */
+.icon-btn {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:30px; height:30px; border-radius:6px;
+    border:1px solid #e0e0e0; background:#fff;
+    text-decoration:none; cursor:pointer; flex-shrink:0;
+}
+.icon-btn:hover { background:#f5f5f5; border-color:#bbb; }
+.icon-btn.del:hover { background:#fff0f0; border-color:#fca5a5; }
+.icon-btn svg { display:block; }
+
+/* Col headers */
+.col-hdr { font-size:11px; font-weight:600; color:#999;
+    text-transform:uppercase; letter-spacing:.05em; padding:0 2px 6px; }
 
 /* Results */
 .plain-english { background:#e6f4ea; border-radius:10px; padding:.9rem 1.1rem;
-    font-size:14px; color:#1e5c2a; line-height:1.65; margin-bottom:1.1rem; }
+    font-size:14px; color:#1e5c2a; line-height:1.65; margin-bottom:1rem; }
 .hero { border:1px solid #e8e8e8; border-radius:12px; overflow:hidden; margin-bottom:1rem; }
-.hero-top { padding:1.1rem 1.25rem; }
-.route { font-size:19px; font-weight:600; color:#111; display:flex;
-    align-items:center; gap:10px; margin-bottom:4px; }
+.hero-top { padding:1rem 1.25rem; }
+.route { font-size:18px; font-weight:600; color:#111;
+    display:flex; align-items:center; gap:10px; margin-bottom:4px; }
 .route-line { flex:1; height:1px; background:#ddd; }
 .tagline { font-size:13px; color:#666; }
 .hero-bottom { display:grid; grid-template-columns:1fr 1fr 1fr; border-top:1px solid #e8e8e8; }
-.hero-stat { padding:.9rem 1.1rem; border-right:1px solid #e8e8e8; }
+.hero-stat { padding:.85rem 1.1rem; border-right:1px solid #e8e8e8; }
 .hero-stat:last-child { border-right:none; }
 .hs-label { font-size:11px; color:#999; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
-.hs-val { font-size:18px; font-weight:600; color:#111; }
-.hs-sub { font-size:12px; color:#888; margin-top:2px; }
+.hs-val   { font-size:17px; font-weight:600; color:#111; }
+.hs-sub   { font-size:12px; color:#888; margin-top:2px; }
 .pts-wrap { background:#fff; border:1px solid #e8e8e8; border-radius:12px;
     padding:1rem 1.25rem; margin-bottom:1rem; }
 .pts-title { font-size:11px; font-weight:600; color:#999; text-transform:uppercase;
     letter-spacing:.05em; margin-bottom:10px; }
-.pts-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.pts-row  { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
 .pts-name { font-size:13px; color:#111; min-width:130px; }
-.pts-track { flex:1; height:8px; background:#f0f0f0; border-radius:4px; overflow:hidden; }
+.pts-track{ flex:1; height:8px; background:#f0f0f0; border-radius:4px; overflow:hidden; }
 .pts-fill { height:100%; border-radius:4px; }
-.pts-amt { font-size:12px; color:#888; min-width:90px; text-align:right; }
-.legend { display:flex; gap:16px; margin-top:10px; }
+.pts-amt  { font-size:12px; color:#888; min-width:90px; text-align:right; }
+.legend   { display:flex; gap:16px; margin-top:10px; }
 .legend-item { font-size:11px; color:#999; display:flex; align-items:center; gap:5px; }
-.legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.res-card { background:#fff; border:1px solid #e8e8e8; border-radius:12px; padding:1rem 1.25rem; }
+.legend-dot  { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.res-card { background:#fff; border:1px solid #e8e8e8; border-radius:12px;
+    padding:1rem 1.25rem; margin-bottom:1rem; }
 .card-head { font-size:11px; font-weight:600; color:#999; text-transform:uppercase;
     letter-spacing:.05em; margin-bottom:10px; }
 .dr { display:flex; justify-content:space-between; padding:6px 0;
@@ -73,47 +83,48 @@ st.markdown("""
     padding:5px 12px; font-size:12px; color:#555; }
 .steps-card { background:#fff; border:1px solid #e8e8e8; border-radius:12px;
     padding:1rem 1.25rem; margin-bottom:1rem; }
-.step { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #f5f5f5; align-items:flex-start; }
+.step { display:flex; gap:12px; padding:10px 0;
+    border-bottom:1px solid #f5f5f5; align-items:flex-start; }
 .step:last-child { border-bottom:none; }
-.step-num { width:28px; height:28px; min-width:28px; border-radius:50%; background:#e8f0fe;
-    display:flex; align-items:center; justify-content:center;
+.step-num { width:26px; height:26px; min-width:26px; border-radius:50%;
+    background:#e8f0fe; display:flex; align-items:center; justify-content:center;
     font-size:12px; font-weight:600; color:#1a56cc; }
 .step-title { font-size:13px; font-weight:600; color:#111; margin-bottom:3px; }
-.step-desc { font-size:12px; color:#666; line-height:1.55; }
+.step-desc  { font-size:12px; color:#666; line-height:1.55; }
 .alt-chip { background:#f7f7f7; border:1px solid #e8e8e8; border-radius:10px;
     padding:.75rem 1rem; margin-bottom:8px; }
-.alt-name { font-size:13px; font-weight:600; color:#111; margin-bottom:3px; }
-.alt-desc { font-size:12px; color:#555; margin-bottom:3px; }
+.alt-name  { font-size:13px; font-weight:600; color:#111; margin-bottom:3px; }
+.alt-desc  { font-size:12px; color:#555; margin-bottom:3px; }
 .alt-trade { font-size:12px; color:#aaa; }
 .cc-wrap { background:#f0f7ff; border:2px solid #a8d0f5; border-radius:12px;
     padding:1rem 1.25rem; margin-bottom:1rem; }
-.cc-eye { font-size:11px; color:#1a56cc; font-weight:600; text-transform:uppercase;
+.cc-eye  { font-size:11px; color:#1a56cc; font-weight:600; text-transform:uppercase;
     letter-spacing:.05em; margin-bottom:6px; }
 .cc-name { font-size:15px; font-weight:600; color:#111; margin-bottom:4px; }
-.cc-bonus { font-size:13px; color:#2d7a3a; margin-bottom:6px; }
-.cc-why { font-size:13px; color:#555; }
+.cc-bonus{ font-size:13px; color:#2d7a3a; margin-bottom:6px; }
+.cc-why  { font-size:13px; color:#555; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
-
-/* Icon-style action buttons — target Streamlit's button elements */
-div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
-    padding: 0 !important;
-    min-height: 32px !important;
-    height: 32px !important;
-    font-size: 16px !important;
-    line-height: 1 !important;
-    border-radius: 6px !important;
-    border: 1px solid #e0e0e0 !important;
-    background: #fff !important;
-    color: #555 !important;
-    width: 100% !important;
-}
-div[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {
-    background: #f5f5f5 !important;
-    border-color: #bbb !important;
-}
 </style>
 """, unsafe_allow_html=True)
+
+# ── SVG icons (inline, hardcoded colors so they always render) ──
+SVG_EDIT = """<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="11.8" width="12" height="1.1" rx=".55" fill="#555"/>
+  <path d="M3.5 10.5l6-6 2.2 2.2-6 6H3.5v-2.2z" stroke="#555" stroke-width="1.2"
+    stroke-linecap="round" stroke-linejoin="round" fill="#dde8ff"/>
+  <path d="M9.5 4.5l2.2 2.2" stroke="#555" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M11.2 2.8a1.1 1.1 0 011.6 1.6l-.9.9-1.6-1.6.9-.9z" fill="#555"/>
+</svg>"""
+
+SVG_REMOVE = """<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M2.5 4.5h11" stroke="#888" stroke-width="1.3" stroke-linecap="round"/>
+  <path d="M5.5 4.5V3.2a.8.8 0 01.8-.7h3.4a.8.8 0 01.8.7V4.5"
+    stroke="#888" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M4.2 4.5l.8 8h6l.8-8" stroke="#888" stroke-width="1.2"
+    stroke-linecap="round" stroke-linejoin="round" fill="#f0f0f0"/>
+  <path d="M6.5 7v4M9.5 7v4" stroke="#aaa" stroke-width="1.1" stroke-linecap="round"/>
+</svg>"""
 
 # ── Program catalogue ──
 PROGRAMS = {
@@ -144,19 +155,36 @@ PROGRAMS = {
 }
 ALL_PROGRAMS = {n: d for cat in PROGRAMS.values() for n, d in cat.items()}
 
-# ── Button labels (Streamlit strips HTML so we use styled unicode) ──
-ICON_EDIT   = "✎"   # Unicode pencil — styled via CSS below
-ICON_REMOVE = "⊗"   # Unicode circled X
-
 def get_cat(name):
     for cat, progs in PROGRAMS.items():
         if name in progs: return cat
     return None
 
 # ── Session state ──
-for key, default in [("profile", {}), ("editing", None), ("page", "profile")]:
+for key, val in [("profile", {}), ("editing", None), ("page", "profile")]:
     if key not in st.session_state:
-        st.session_state[key] = default
+        st.session_state[key] = val
+
+# ── Handle query-param actions from icon button links ──
+qp = st.query_params
+if "edit" in qp:
+    prog = qp["edit"]
+    if prog in st.session_state.profile:
+        st.session_state.editing = prog
+    st.query_params.clear()
+    st.rerun()
+if "remove" in qp:
+    prog = qp["remove"]
+    if prog in st.session_state.profile:
+        del st.session_state.profile[prog]
+        if st.session_state.editing == prog:
+            st.session_state.editing = None
+    st.query_params.clear()
+    st.rerun()
+if "page" in qp:
+    st.session_state.page = qp["page"]
+    st.query_params.clear()
+    st.rerun()
 
 # ── Mock result ──
 MOCK = {
@@ -192,14 +220,13 @@ MOCK = {
 # ════════════════════════════════
 def page_profile():
     st.markdown("## My Loyalty Profile")
-    st.caption("Your programs, balances, and status levels. Edit any row inline.")
+    st.caption("Set up once — used for every trip. Click the pencil to edit, bin to remove.")
 
     profile = st.session_state.profile
 
     if not profile:
         st.info("No programs added yet. Use the form below to get started.")
     else:
-        # ── Table per category ──
         for cat_name, cat_progs in PROGRAMS.items():
             cat_entries = {k: v for k, v in profile.items() if k in cat_progs}
             if not cat_entries:
@@ -207,106 +234,124 @@ def page_profile():
 
             st.markdown(f"**{cat_name}**")
 
-            # Header row
-            h1, h2, h3, h4, h5 = st.columns([3, 1.5, 1.8, 0.8, 0.8])
-            h1.markdown("<small style='color:#999;font-weight:600;text-transform:uppercase;letter-spacing:.04em;'>Program</small>", unsafe_allow_html=True)
-            h2.markdown("<small style='color:#999;font-weight:600;text-transform:uppercase;letter-spacing:.04em;'>Balance</small>", unsafe_allow_html=True)
-            h3.markdown("<small style='color:#999;font-weight:600;text-transform:uppercase;letter-spacing:.04em;'>Status</small>", unsafe_allow_html=True)
-            st.markdown("<hr style='margin:4px 0 0;border:none;border-top:1px solid #e8e8e8;'>", unsafe_allow_html=True)
+            # Column header row
+            st.markdown(
+                '<div style="display:flex;gap:12px;padding:4px 2px 6px;">'
+                '<div style="width:9px;flex-shrink:0;"></div>'
+                '<div class="col-hdr" style="flex:2;">Program</div>'
+                '<div class="col-hdr" style="flex:1;">Balance</div>'
+                '<div class="col-hdr" style="flex:1;">Status</div>'
+                '<div style="width:66px;flex-shrink:0;"></div>'
+                '</div>',
+                unsafe_allow_html=True)
+            st.markdown("<div style='border-top:1px solid #e8e8e8;margin-bottom:2px;'></div>",
+                        unsafe_allow_html=True)
 
             for prog_name, entry in cat_entries.items():
-                pdata  = ALL_PROGRAMS[prog_name]
-                color  = pdata["color"]
+                pdata     = ALL_PROGRAMS[prog_name]
+                color     = pdata["color"]
+                status    = entry["status"]
+                is_active = status not in ["None", "Standard"]
+                pill_cls  = "act" if is_active else "std"
+                # URL-encode the program name for query params
+                import urllib.parse
+                enc = urllib.parse.quote(prog_name)
 
                 if st.session_state.editing == prog_name:
-                    # ── Inline edit row ──
-                    with st.container():
-                        st.markdown(f"<small style='color:#1a56cc;font-weight:500;'>Editing: {prog_name}</small>", unsafe_allow_html=True)
-                        e1, e2, e3, e4 = st.columns([1.8, 1.8, 0.9, 0.9])
-                        with e1:
-                            new_bal = st.number_input("Balance", min_value=0, step=1000,
-                                value=entry["balance"], key=f"ebal_{prog_name}", label_visibility="collapsed")
-                        with e2:
-                            idx = pdata["statuses"].index(entry["status"]) if entry["status"] in pdata["statuses"] else 0
-                            new_status = st.selectbox("Status", pdata["statuses"], index=idx,
-                                key=f"estat_{prog_name}", label_visibility="collapsed")
-                        with e3:
-                            if st.button("Save", key=f"save_{prog_name}", use_container_width=True, type="primary"):
-                                st.session_state.profile[prog_name] = {"balance": new_bal, "status": new_status}
-                                st.session_state.editing = None
-                                st.rerun()
-                        with e4:
-                            if st.button("Cancel", key=f"cancel_{prog_name}", use_container_width=True):
-                                st.session_state.editing = None
-                                st.rerun()
-                    st.markdown("<hr style='margin:4px 0;border:none;border-top:1px solid #f0f0f0;'>", unsafe_allow_html=True)
-
-                else:
-                    # ── View row — full HTML row + hidden st.buttons for actions ──
-                    status    = entry["status"]
-                    is_active = status not in ["None", "Standard"]
-                    pill_bg   = "#e6f4ea" if is_active else "#f0f0f0"
-                    pill_col  = "#1e5c2a" if is_active else "#666"
-
-                    # Render the full row as one HTML block (icons + all data in one line)
+                    # ── Inline edit form ──
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:12px;padding:9px 2px;'
-                        f'border-bottom:1px solid #f0f0f0;">'
-                        f'<span style="width:9px;height:9px;border-radius:50%;background:{color};'
-                        f'display:inline-block;flex-shrink:0;"></span>'
-                        f'<span style="font-size:13px;font-weight:600;color:#111;flex:2;min-width:0;">{prog_name}</span>'
-                        f'<span style="font-size:13px;color:#333;flex:1;white-space:nowrap;">{entry["balance"]:,} pts</span>'
-                        f'<span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;'
-                        f'font-weight:500;background:{pill_bg};color:{pill_col};flex:1;white-space:nowrap;">{status}</span>'
+                        f'<div style="background:#f8faff;border:1px solid #c5d8f7;'
+                        f'border-radius:8px;padding:10px 12px;margin:4px 0;">'
+                        f'<span style="font-size:12px;color:#1a56cc;font-weight:500;">'
+                        f'Editing: {prog_name}</span></div>',
+                        unsafe_allow_html=True)
+                    ec1, ec2, ec3, ec4 = st.columns([2, 2, 1, 1])
+                    with ec1:
+                        new_bal = st.number_input(
+                            "Balance", min_value=0, step=1000,
+                            value=entry["balance"],
+                            key=f"ebal_{prog_name}",
+                            label_visibility="collapsed")
+                    with ec2:
+                        idx = pdata["statuses"].index(status) if status in pdata["statuses"] else 0
+                        new_status = st.selectbox(
+                            "Status", pdata["statuses"], index=idx,
+                            key=f"estat_{prog_name}",
+                            label_visibility="collapsed")
+                    with ec3:
+                        if st.button("Save", key=f"save_{prog_name}",
+                                     use_container_width=True, type="primary"):
+                            st.session_state.profile[prog_name] = {
+                                "balance": new_bal, "status": new_status}
+                            st.session_state.editing = None
+                            st.rerun()
+                    with ec4:
+                        if st.button("Cancel", key=f"cancel_{prog_name}",
+                                     use_container_width=True):
+                            st.session_state.editing = None
+                            st.rerun()
+                else:
+                    # ── View row — HTML with inline SVG icon links ──
+                    st.markdown(
+                        f'<div class="prog-row">'
+                        f'<span class="prog-dot" style="background:{color};"></span>'
+                        f'<span class="prog-name">{prog_name}</span>'
+                        f'<span class="prog-bal">{entry["balance"]:,} pts</span>'
+                        f'<span class="prog-pill {pill_cls}">{status}</span>'
+                        f'<span class="prog-actions">'
+                        f'<a class="icon-btn" href="?edit={enc}" title="Edit {prog_name}">{SVG_EDIT}</a>'
+                        f'<a class="icon-btn del" href="?remove={enc}" title="Remove {prog_name}">{SVG_REMOVE}</a>'
+                        f'</span>'
                         f'</div>',
                         unsafe_allow_html=True)
 
-                    # Real action buttons — rendered small and right-aligned below the row
-                    bc1, bc2, bc3 = st.columns([6, 1, 1])
-                    with bc2:
-                        if st.button(ICON_EDIT, key=f"edit_{prog_name}",
-                                     help=f"Edit {prog_name}", use_container_width=True):
-                            st.session_state.editing = prog_name
-                            st.rerun()
-                    with bc3:
-                        if st.button(ICON_REMOVE, key=f"del_{prog_name}",
-                                     help=f"Remove {prog_name}", use_container_width=True):
-                            del st.session_state.profile[prog_name]
-                            if st.session_state.editing == prog_name:
-                                st.session_state.editing = None
-                            st.rerun()
-
             st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Add program form ──
+    # ── Add program ──
     st.markdown("---")
     st.markdown("**Add a program**")
 
-    a1, a2, a3, a4, a5 = st.columns([2, 2, 2, 2, 1])
-    with a1:
-        add_cat = st.selectbox("Category", list(PROGRAMS.keys()), label_visibility="visible", key="add_cat")
+    fc1, fc2, fc3, fc4, fc5 = st.columns([1.4, 1.8, 1.4, 1.8, 0.7])
+    with fc1:
+        add_cat = st.selectbox("Category", list(PROGRAMS.keys()),
+                               key="prof_add_cat", label_visibility="collapsed")
     available = [p for p in PROGRAMS[add_cat] if p not in profile]
-    with a2:
+    with fc2:
         if available:
-            add_prog = st.selectbox("Program", available, key="add_prog")
+            add_prog = st.selectbox("Program", available,
+                                    key="prof_add_prog", label_visibility="collapsed")
         else:
-            st.selectbox("Program", ["All added"], disabled=True, key="add_prog_dis")
+            st.selectbox("Program", ["— all added —"], disabled=True,
+                         key="prof_add_prog_dis", label_visibility="collapsed")
             add_prog = None
-    with a3:
-        add_bal = st.number_input("Balance", min_value=0, step=1000, value=0, key="add_bal")
-    with a4:
+    with fc3:
+        add_bal = st.number_input("Balance", min_value=0, step=1000, value=0,
+                                  key="prof_add_bal", label_visibility="collapsed")
+    with fc4:
         if add_prog:
-            pdata = PROGRAMS[add_cat][add_prog]
-            add_status = st.selectbox("Status", pdata["statuses"], key="add_status")
+            add_status = st.selectbox("Status", PROGRAMS[add_cat][add_prog]["statuses"],
+                                      key="prof_add_status", label_visibility="collapsed")
         else:
-            st.selectbox("Status", ["—"], disabled=True, key="add_status_dis")
+            st.selectbox("Status", ["—"], disabled=True,
+                         key="prof_add_status_dis", label_visibility="collapsed")
             add_status = None
-    with a5:
-        st.markdown("<div style='padding-top:24px;'>", unsafe_allow_html=True)
-        if st.button("Add", use_container_width=True, type="primary", disabled=not add_prog):
+    with fc5:
+        st.markdown("<div style='padding-top:4px;'>", unsafe_allow_html=True)
+        if st.button("Add", use_container_width=True, type="primary",
+                     disabled=not add_prog, key="prof_add_btn"):
             st.session_state.profile[add_prog] = {"balance": add_bal, "status": add_status}
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
+
+    # Column labels above the add form
+    st.markdown(
+        '<div style="display:flex;gap:0;margin-top:-2.5rem;margin-bottom:.25rem;">'
+        '<div class="col-hdr" style="flex:1.4;">Category</div>'
+        '<div class="col-hdr" style="flex:1.8;">Program</div>'
+        '<div class="col-hdr" style="flex:1.4;">Balance</div>'
+        '<div class="col-hdr" style="flex:1.8;">Status</div>'
+        '</div>',
+        unsafe_allow_html=True)
 
 
 # ════════════════════════════════
@@ -315,11 +360,10 @@ def page_profile():
 def page_trip():
     profile = st.session_state.profile
 
-    # Sidebar: trip inputs only
     with st.sidebar:
         st.markdown("### Settings")
         api_key   = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...")
-        mock_mode = st.toggle("Mock mode", value=True, help="Test UI without API calls")
+        mock_mode = st.toggle("Mock mode", value=True, help="Test without API calls")
         if mock_mode:
             st.caption("Sample data — no API key needed.")
         st.divider()
@@ -337,21 +381,18 @@ def page_trip():
         st.divider()
         run = st.button("Find My Best Trip", type="primary", use_container_width=True)
 
-    # Main panel
     st.markdown("## Plan a Trip")
 
     if not profile:
-        st.warning("Your loyalty profile is empty. Go to **My Profile** and add your programs first.")
+        st.warning("Your loyalty profile is empty — go to **My Profile** and add your programs first.")
         return
 
-    # Profile summary strip
-    total_programs = len(profile)
-    total_pts      = sum(e["balance"] for e in profile.values())
-    s1, s2, s3 = st.columns(3)
-    s1.metric("Programs loaded", total_programs)
-    s2.metric("Total points", f"{total_pts:,}")
-    s3.metric("Elite statuses", sum(1 for e in profile.values() if e["status"] not in ["None", "Standard"]))
-
+    total_pts = sum(e["balance"] for e in profile.values())
+    elite_ct  = sum(1 for e in profile.values() if e["status"] not in ["None", "Standard"])
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Programs loaded", len(profile))
+    m2.metric("Total points",    f"{total_pts:,}")
+    m3.metric("Elite statuses",  elite_ct)
     st.markdown("---")
 
     if not run:
@@ -359,61 +400,54 @@ def page_trip():
         return
 
     def build_user_data():
-        credit_cards, airlines, hotels = {}, {}, {}
-        airline_statuses, hotel_statuses = {}, {}
-        for prog_name, entry in profile.items():
-            bal    = entry["balance"]
-            status = entry["status"]
-            cat    = get_cat(prog_name)
-            if cat == "Credit Cards":
-                credit_cards[prog_name] = bal
+        cc, al, ht, ast, hst = {}, {}, {}, {}, {}
+        for pn, entry in profile.items():
+            bal = entry["balance"]; s = entry["status"]; cat = get_cat(pn)
+            if cat == "Credit Cards": cc[pn] = bal
             elif cat == "Airlines":
-                airlines[prog_name] = bal
-                if status != "None": airline_statuses[prog_name] = status
+                al[pn] = bal
+                if s != "None": ast[pn] = s
             elif cat == "Hotels":
-                hotels[prog_name] = bal
-                if status != "None": hotel_statuses[prog_name] = status
+                ht[pn] = bal
+                if s != "None": hst[pn] = s
         return {
-            "points":      {"credit_cards": credit_cards, "airline_miles": airlines, "hotel_points": hotels},
-            "status":      {"airlines": airline_statuses, "hotels": hotel_statuses},
-            "trip":        {"origin": f"{origin} ({origin_code})", "destination": f"{destination} ({dest_code})", "dates": dates, "nights": int(nights)},
+            "points":      {"credit_cards": cc, "airline_miles": al, "hotel_points": ht},
+            "status":      {"airlines": ast, "hotels": hst},
+            "trip":        {"origin": f"{origin} ({origin_code})", "destination": f"{destination} ({dest_code})",
+                            "dates": dates, "nights": int(nights)},
             "preferences": {"cabin": cabin, "hotel_style": hotel_style, "value_vs_experience": val_exp},
         }
 
     SYSTEM = "You are an expert travel strategist. Return ONLY valid JSON, no markdown, no extra text."
 
     def build_prompt(d):
-        return f"""Given the user loyalty profile and trip below, generate the most optimal travel strategy in plain, friendly English.
+        return f"""Given the loyalty profile and trip below, generate the optimal travel strategy in plain friendly English.
 
 USER PROFILE & TRIP:
 {json.dumps(d, indent=2)}
 
-Return EXACTLY this JSON (plain English, no jargon):
+Return EXACTLY this JSON:
 {{
   "plain_english": "One friendly sentence summarising the strategy",
   "route_display": {{"origin": "{origin}", "destination": "{destination}"}},
   "hero": {{"flight_pts": "e.g. 60,000 Chase pts", "hotel_nights": "e.g. 4 nights paid, 5th free", "cash": "e.g. ~$150"}},
-  "points_bars": [
-    {{"name": "Program", "pct": 80, "color": "#378ADD", "label": "60k → flight"}},
-    {{"name": "Program", "pct": 60, "color": "#1D9E75", "label": "80k → hotel"}}
-  ],
-  "flight": {{"airline": "", "book_via": "", "points": "", "cash_fees": ""}},
-  "hotel":  {{"name": "", "book_via": "", "points": "", "fifth_night": "Free or N/A"}},
-  "perks": ["short plain-English perk"],
-  "booking_steps": [{{"title": "Action", "desc": "Plain English explanation"}}],
-  "alternatives": [{{"name": "", "desc": "", "trade": ""}}],
-  "card": {{"name": "", "bonus": "", "why": ""}},
-  "status": {{"airline": "", "hotel": ""}},
+  "points_bars": [{{"name":"","pct":80,"color":"#378ADD","label":"60k → flight"}}],
+  "flight": {{"airline":"","book_via":"","points":"","cash_fees":""}},
+  "hotel":  {{"name":"","book_via":"","points":"","fifth_night":"Free or N/A"}},
+  "perks": ["plain-English perk"],
+  "booking_steps": [{{"title":"Action","desc":"Plain English explanation"}}],
+  "alternatives": [{{"name":"","desc":"","trade":""}}],
+  "card": {{"name":"","bonus":"","why":""}},
+  "status": {{"airline":"","hotel":""}},
   "confidence": ""
 }}
-Use city names not codes. Keep everything friendly and simple. Do NOT assume real-time availability."""
+Use city names not codes. Keep it friendly. Do NOT assume real-time availability."""
 
     def call_claude(key, data):
         client = anthropic.Anthropic(api_key=key)
         msg = client.messages.create(
             model="claude-opus-4-5", max_tokens=2000, system=SYSTEM,
-            messages=[{"role": "user", "content": build_prompt(data)}]
-        )
+            messages=[{"role": "user", "content": build_prompt(data)}])
         raw = msg.content[0].text.strip()
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
@@ -426,18 +460,14 @@ Use city names not codes. Keep everything friendly and simple. Do NOT assume rea
         st.markdown(f'<div class="plain-english"><b>In plain English:</b> {r.get("plain_english","")}</div>', unsafe_allow_html=True)
 
         rd = r.get("route_display", {}); hero = r.get("hero", {})
-        st.markdown(f"""
-        <div class="hero">
-          <div class="hero-top">
-            <div class="route"><span>{rd.get("origin", origin)}</span><div class="route-line"></div>&rarr;<div class="route-line"></div><span>{rd.get("destination", destination)}</span></div>
-            <p class="tagline">{dates} · {cabin.title()} class · {int(nights)} nights</p>
-          </div>
-          <div class="hero-bottom">
-            <div class="hero-stat"><p class="hs-label">Flight</p><p class="hs-val">{hero.get("flight_pts","—")}</p><p class="hs-sub">points used</p></div>
-            <div class="hero-stat"><p class="hs-label">Hotel</p><p class="hs-val">{hero.get("hotel_nights","—")}</p><p class="hs-sub">award nights</p></div>
-            <div class="hero-stat"><p class="hs-label">Cash needed</p><p class="hs-val">{hero.get("cash","—")}</p><p class="hs-sub">taxes &amp; fees</p></div>
-          </div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="hero"><div class="hero-top">
+          <div class="route"><span>{rd.get("origin",origin)}</span><div class="route-line"></div>&rarr;<div class="route-line"></div><span>{rd.get("destination",destination)}</span></div>
+          <p class="tagline">{dates} &middot; {cabin.title()} class &middot; {int(nights)} nights</p>
+        </div><div class="hero-bottom">
+          <div class="hero-stat"><p class="hs-label">Flight</p><p class="hs-val">{hero.get("flight_pts","—")}</p><p class="hs-sub">points used</p></div>
+          <div class="hero-stat"><p class="hs-label">Hotel</p><p class="hs-val">{hero.get("hotel_nights","—")}</p><p class="hs-sub">award nights</p></div>
+          <div class="hero-stat"><p class="hs-label">Cash needed</p><p class="hs-val">{hero.get("cash","—")}</p><p class="hs-sub">taxes &amp; fees</p></div>
+        </div></div>""", unsafe_allow_html=True)
 
         bars = r.get("points_bars", [])
         if bars:
@@ -453,7 +483,8 @@ Use city names not codes. Keep everything friendly and simple. Do NOT assume rea
 
         perks = r.get("perks", [])
         if perks:
-            st.markdown(f'<div class="perks-row">{"".join(f"<div class=chip>✓ {p}</div>" for p in perks)}</div>', unsafe_allow_html=True)
+            chips = "".join(f'<div class="chip">&#10003; {p}</div>' for p in perks)
+            st.markdown(f'<div class="perks-row">{chips}</div>', unsafe_allow_html=True)
 
         steps = r.get("booking_steps", [])
         if steps:
@@ -480,48 +511,49 @@ Use city names not codes. Keep everything friendly and simple. Do NOT assume rea
 
         st.caption(f"Confidence: {r.get('confidence','')}")
 
-    # Run
     if mock_mode:
         render(MOCK, is_mock=True)
+    elif not api_key:
+        st.error("Add your Anthropic API key in the sidebar, or turn on mock mode.")
     else:
-        if not api_key:
-            st.error("Add your Anthropic API key in the sidebar, or turn on mock mode.")
-        else:
-            with st.spinner("Finding your best trip…"):
-                try:
-                    render(call_claude(api_key, build_user_data()))
-                except json.JSONDecodeError as e:
-                    st.error(f"Unexpected response from Claude: {e}")
-                except anthropic.AuthenticationError:
-                    st.error("Invalid API key — check console.anthropic.com")
-                except anthropic.APIError as e:
-                    st.error(f"API error: {e}")
-                except Exception as e:
-                    st.error(f"Something went wrong: {e}")
+        with st.spinner("Finding your best trip…"):
+            try:
+                render(call_claude(api_key, build_user_data()))
+            except json.JSONDecodeError as e:
+                st.error(f"Unexpected response from Claude: {e}")
+            except anthropic.AuthenticationError:
+                st.error("Invalid API key — check console.anthropic.com")
+            except anthropic.APIError as e:
+                st.error(f"API error: {e}")
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
 
 
 # ════════════════════════════════
-#  NAV
+#  NAV + ROUTER
 # ════════════════════════════════
 col_logo, col_nav = st.columns([3, 2])
 with col_logo:
     st.markdown("# AI Loyalty Optimizer")
 with col_nav:
-    st.markdown("<div style='padding-top:18px;text-align:right;'>", unsafe_allow_html=True)
-    n1, n2 = st.columns(2)
-    with n1:
+    st.markdown("<div style='padding-top:20px;'>", unsafe_allow_html=True)
+    nb1, nb2 = st.columns(2)
+    with nb1:
         if st.button("My Profile", use_container_width=True,
-                     type="primary" if st.session_state.page == "profile" else "secondary"):
+                     type="primary" if st.session_state.page == "profile" else "secondary",
+                     key="nav_profile"):
             st.session_state.page = "profile"
             st.rerun()
-    with n2:
+    with nb2:
         if st.button("Plan a Trip", use_container_width=True,
-                     type="primary" if st.session_state.page == "trip" else "secondary"):
+                     type="primary" if st.session_state.page == "trip" else "secondary",
+                     key="nav_trip"):
             st.session_state.page = "trip"
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("<hr style='margin:0 0 1.5rem;'>", unsafe_allow_html=True)
+st.markdown("<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
+            unsafe_allow_html=True)
 
 if st.session_state.page == "profile":
     page_profile()
