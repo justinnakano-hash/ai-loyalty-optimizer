@@ -1,0 +1,10 @@
+# Never commit real secrets
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+.env
+
+# Local dev artifacts
+*.log
