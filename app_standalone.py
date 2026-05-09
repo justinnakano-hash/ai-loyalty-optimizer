@@ -6,13 +6,13 @@ import re
 st.set_page_config(
     page_title="AI Loyalty Optimizer",
     page_icon="✈️",
-    layout="wide",
+    layout="centered",
 )
 
 # ── CSS ──
 st.markdown("""
 <style>
-.block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; }
+.block-container { max-width: 900px !important; padding-top: 1.5rem !important; padding-bottom: 2rem !important; }
 
 /* Profile table */
 .prog-table { width:100%; border-collapse:collapse; font-size:14px; }
@@ -186,7 +186,7 @@ def page_profile():
             st.markdown(f"**{cat_name}**")
 
             # Header row
-            h1, h2, h3, h4, h5 = st.columns([3, 2, 2, 1, 1])
+            h1, h2, h3, h4, h5 = st.columns([3, 1.5, 1.8, 0.8, 0.8])
             h1.markdown("<small style='color:#999;font-weight:600;text-transform:uppercase;letter-spacing:.04em;'>Program</small>", unsafe_allow_html=True)
             h2.markdown("<small style='color:#999;font-weight:600;text-transform:uppercase;letter-spacing:.04em;'>Balance</small>", unsafe_allow_html=True)
             h3.markdown("<small style='color:#999;font-weight:600;text-transform:uppercase;letter-spacing:.04em;'>Status</small>", unsafe_allow_html=True)
@@ -200,7 +200,7 @@ def page_profile():
                     # ── Inline edit row ──
                     with st.container():
                         st.markdown(f"<small style='color:#1a56cc;font-weight:500;'>Editing: {prog_name}</small>", unsafe_allow_html=True)
-                        e1, e2, e3, e4 = st.columns([2, 2, 1, 1])
+                        e1, e2, e3, e4 = st.columns([1.8, 1.8, 0.9, 0.9])
                         with e1:
                             new_bal = st.number_input("Balance", min_value=0, step=1000,
                                 value=entry["balance"], key=f"ebal_{prog_name}", label_visibility="collapsed")
@@ -226,7 +226,7 @@ def page_profile():
                     pill_bg  = "#e6f4ea" if is_active else "#f0f0f0"
                     pill_col = "#1e5c2a" if is_active else "#666"
 
-                    c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
+                    c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.8, 0.8, 0.8])
                     with c1:
                         st.markdown(
                             f'<div style="padding:8px 0;font-size:14px;">'
