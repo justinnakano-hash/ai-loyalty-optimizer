@@ -638,24 +638,25 @@ Use city names not airport codes. Be friendly. Do NOT assume real-time availabil
 # ─────────────────────────────────────────────
 #  NAV + ROUTER
 # ─────────────────────────────────────────────
-col_logo, col_nav = st.columns([3, 2])
-with col_logo:
-    st.markdown("# AI Loyalty Optimizer")
-with col_nav:
-    nb1, nb2 = st.columns(2)
-    with nb1:
-        if st.button("My Profile", key="nav_profile", use_container_width=True,
-                     type="primary" if st.session_state.page == "profile" else "secondary"):
-            st.session_state.page = "profile"
-            st.rerun()
-    with nb2:
-        if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
-                     type="primary" if st.session_state.page == "trip" else "secondary"):
-            st.session_state.page = "trip"
-            st.rerun()
+
+# Title sits on its own line — clean and full width
+st.markdown("# AI Loyalty Optimizer")
+
+# Nav tabs rendered as inline buttons on one row below the title
+nav_col1, nav_col2, nav_spacer = st.columns([1.4, 1.4, 4])
+with nav_col1:
+    if st.button("My Profile", key="nav_profile", use_container_width=True,
+                 type="primary" if st.session_state.page == "profile" else "secondary"):
+        st.session_state.page = "profile"
+        st.rerun()
+with nav_col2:
+    if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
+                 type="primary" if st.session_state.page == "trip" else "secondary"):
+        st.session_state.page = "trip"
+        st.rerun()
 
 st.markdown(
-    "<hr style='margin:.25rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
+    "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
     unsafe_allow_html=True)
 
 if st.session_state.page == "profile":
