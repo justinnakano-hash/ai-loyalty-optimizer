@@ -412,38 +412,35 @@ def page_profile():
 def page_trip():
     profile = st.session_state.profile
 
+    # ── API key comes from secrets, never from user input ──
+    def get_api_key():
+        try:
+            return st.secrets["admin"]["api_key"]
+        except (KeyError, FileNotFoundError):
+            return None
+
+    api_key = get_api_key()
+
+    # ── Mock mode is admin-controlled only ──
+    _override = st.session_state.get("mock_override", None)
+    # Default to True (mock on) if no admin override and no API key configured
+    if _override is not None:
+        mock_mode = _override
+    else:
+        mock_mode = api_key is None  # auto mock-on if no key set up yet
+
     # ── Sidebar ──
     with st.sidebar:
-        st.markdown("### Settings")
-        api_key   = st.text_input("Anthropic API Key", type="password",
-                                  placeholder="sk-ant-...")
-        _override = st.session_state.get("mock_override", None)
-        if _override is not None:
-            mock_mode = _override
-            st.caption(f"Mock mode {'ON' if mock_mode else 'OFF'} (set by admin)")
-        else:
-            mock_mode = st.toggle("Mock mode", value=True,
-                                  help="Test the UI without using API tokens")
-            if mock_mode:
-                st.caption("Sample data — no API key needed.")
-        st.divider()
 
-        # ── Metadata status ──
-        gen_at = get_metadata().get("generated_at", "not yet generated")
-        if gen_at == "not-yet-refreshed":
-            st.warning("Market data not loaded. Run `python metadata_refresh.py` once to populate.")
+        # ── Status strip (read-only, no controls) ──
+        gen_at = get_metadata().get("generated_at", "")
+        if mock_mode:
+            st.info("Preview mode — showing sample data.")
         else:
-            st.caption(f"Market data: {gen_at[:10]}")
-            if is_stale():
-                if st.button("Refresh market data", use_container_width=True):
-                    with st.spinner("Refreshing…"):
-                        try:
-                            data = refresh_metadata()
-                            save_metadata(data)
-                            get_metadata.clear()   # clear specific cache, not all
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Refresh failed: {e}")
+            if gen_at and gen_at != "not-yet-refreshed":
+                st.caption(f"Market data: {gen_at[:10]}")
+            else:
+                st.warning("Market data not yet loaded.")
         st.divider()
 
         # ── What to search ──
@@ -766,8 +763,7 @@ Use the metadata CPP values and thresholds to make the cash vs points recommenda
     def render(r, is_mock=False):
         if is_mock:
             st.markdown(
-                '<div class="mock-banner">Mock mode — sample data. '
-                'Disable mock mode and add your API key for a real strategy.</div>',
+                '<div class="mock-banner">Preview mode — showing sample data.</div>',
                 unsafe_allow_html=True)
 
         st.markdown(
@@ -1099,17 +1095,20 @@ Use the metadata CPP values and thresholds to make the cash vs points recommenda
     if mock_mode:
         render(MOCK, is_mock=True)
     elif not api_key:
-        st.error("Add your Anthropic API key in the sidebar, or enable mock mode.")
+        st.warning(
+            "This app is not yet configured. "
+            "Please ask the administrator to set up the API key."
+        )
     else:
         with st.spinner("Finding your best trip…"):
             try:
                 render(call_claude(api_key, build_data()))
             except json.JSONDecodeError as e:
-                st.error(f"Unexpected response from Claude: {e}")
+                st.error(f"Unexpected response: {e}")
             except anthropic.AuthenticationError:
-                st.error("Invalid API key — check console.anthropic.com")
+                st.error("API key issue — please contact the administrator.")
             except anthropic.APIError as e:
-                st.error(f"API error: {e}")
+                st.error(f"Service error: {e}")
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
 
