@@ -94,6 +94,24 @@ st.markdown("""
 .cc-why { font-size:13px; color:#555; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
+
+/* Icon-style action buttons — target Streamlit's button elements */
+div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
+    padding: 0 !important;
+    min-height: 32px !important;
+    height: 32px !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+    border-radius: 6px !important;
+    border: 1px solid #e0e0e0 !important;
+    background: #fff !important;
+    color: #555 !important;
+    width: 100% !important;
+}
+div[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {
+    background: #f5f5f5 !important;
+    border-color: #bbb !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -125,6 +143,10 @@ PROGRAMS = {
     },
 }
 ALL_PROGRAMS = {n: d for cat in PROGRAMS.values() for n, d in cat.items()}
+
+# ── Button labels (Streamlit strips HTML so we use styled unicode) ──
+ICON_EDIT   = "✎"   # Unicode pencil — styled via CSS below
+ICON_REMOVE = "⊗"   # Unicode circled X
 
 def get_cat(name):
     for cat, progs in PROGRAMS.items():
@@ -220,43 +242,39 @@ def page_profile():
                     st.markdown("<hr style='margin:4px 0;border:none;border-top:1px solid #f0f0f0;'>", unsafe_allow_html=True)
 
                 else:
-                    # ── View row ──
-                    status = entry["status"]
+                    # ── View row — full HTML row + hidden st.buttons for actions ──
+                    status    = entry["status"]
                     is_active = status not in ["None", "Standard"]
-                    pill_bg  = "#e6f4ea" if is_active else "#f0f0f0"
-                    pill_col = "#1e5c2a" if is_active else "#666"
+                    pill_bg   = "#e6f4ea" if is_active else "#f0f0f0"
+                    pill_col  = "#1e5c2a" if is_active else "#666"
 
-                    c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.8, 0.8, 0.8])
-                    with c1:
-                        st.markdown(
-                            f'<div style="padding:8px 0;font-size:14px;">'
-                            f'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;'
-                            f'background:{color};margin-right:8px;vertical-align:middle;"></span>'
-                            f'<b>{prog_name}</b></div>',
-                            unsafe_allow_html=True)
-                    with c2:
-                        st.markdown(
-                            f'<div style="padding:8px 0;font-size:14px;font-weight:600;color:#111;">'
-                            f'{entry["balance"]:,} pts</div>',
-                            unsafe_allow_html=True)
-                    with c3:
-                        st.markdown(
-                            f'<div style="padding:8px 0;">'
-                            f'<span style="display:inline-block;padding:3px 10px;border-radius:20px;'
-                            f'font-size:12px;font-weight:500;background:{pill_bg};color:{pill_col};">'
-                            f'{status}</span></div>',
-                            unsafe_allow_html=True)
-                    with c4:
-                        if st.button("Edit", key=f"edit_{prog_name}", use_container_width=True):
+                    # Render the full row as one HTML block (icons + all data in one line)
+                    st.markdown(
+                        f'<div style="display:flex;align-items:center;gap:12px;padding:9px 2px;'
+                        f'border-bottom:1px solid #f0f0f0;">'
+                        f'<span style="width:9px;height:9px;border-radius:50%;background:{color};'
+                        f'display:inline-block;flex-shrink:0;"></span>'
+                        f'<span style="font-size:13px;font-weight:600;color:#111;flex:2;min-width:0;">{prog_name}</span>'
+                        f'<span style="font-size:13px;color:#333;flex:1;white-space:nowrap;">{entry["balance"]:,} pts</span>'
+                        f'<span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;'
+                        f'font-weight:500;background:{pill_bg};color:{pill_col};flex:1;white-space:nowrap;">{status}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True)
+
+                    # Real action buttons — rendered small and right-aligned below the row
+                    bc1, bc2, bc3 = st.columns([6, 1, 1])
+                    with bc2:
+                        if st.button(ICON_EDIT, key=f"edit_{prog_name}",
+                                     help=f"Edit {prog_name}", use_container_width=True):
                             st.session_state.editing = prog_name
                             st.rerun()
-                    with c5:
-                        if st.button("Remove", key=f"del_{prog_name}", use_container_width=True):
+                    with bc3:
+                        if st.button(ICON_REMOVE, key=f"del_{prog_name}",
+                                     help=f"Remove {prog_name}", use_container_width=True):
                             del st.session_state.profile[prog_name]
                             if st.session_state.editing == prog_name:
                                 st.session_state.editing = None
                             st.rerun()
-                    st.markdown("<hr style='margin:0;border:none;border-top:1px solid #f0f0f0;'>", unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
