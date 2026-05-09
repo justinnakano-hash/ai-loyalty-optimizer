@@ -2,7 +2,6 @@ import streamlit as st
 import anthropic
 import json
 import re
-import pandas as pd
 
 st.set_page_config(
     page_title="AI Loyalty Optimizer",
@@ -181,8 +180,6 @@ PROGRAMS = {
     },
 }
 ALL_PROGRAMS = {n: d for cat in PROGRAMS.values() for n, d in cat.items()}
-ALL_STATUSES = sorted({s for p in ALL_PROGRAMS.values() for s in p["statuses"]})
-
 def get_cat(name):
     for cat, progs in PROGRAMS.items():
         if name in progs: return cat
@@ -193,6 +190,7 @@ def get_cat(name):
 # ─────────────────────────────────────────────
 if "profile" not in st.session_state: st.session_state.profile = {}
 if "page"    not in st.session_state: st.session_state.page    = "profile"
+if "editing" not in st.session_state: st.session_state.editing = None
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
@@ -226,130 +224,174 @@ MOCK = {
 
 
 # ─────────────────────────────────────────────
-#  PAGE: MY PROFILE  (uses st.data_editor)
+#  PAGE: MY PROFILE
 # ─────────────────────────────────────────────
 def page_profile():
     st.markdown("## My Loyalty Profile")
-    st.caption("Edit any cell directly in the table. Use the checkbox column to select rows for deletion.")
+    st.caption("Set up once — used for every trip.")
 
     profile = st.session_state.profile
+    editing = st.session_state.get("editing", None)
 
-    # ── Data editor ──
-    if profile:
-        # Build dataframe from profile
-        rows = []
-        for prog_name, entry in profile.items():
-            cat = get_cat(prog_name)
-            rows.append({
-                "Category":    cat,
-                "Program":     prog_name,
-                "Balance":     entry["balance"],
-                "Status":      entry["status"],
-            })
-        df = pd.DataFrame(rows)
-
-        # Build per-row status options (each program has different valid statuses)
-        # We use a single SelectboxColumn with all statuses — validation happens on save
-        edited = st.data_editor(
-            df,
-            use_container_width=True,
-            num_rows="dynamic",          # allows row deletion via checkbox
-            hide_index=True,
-            column_config={
-                "Category": st.column_config.TextColumn(
-                    "Category", disabled=True, width="small"),
-                "Program": st.column_config.SelectboxColumn(
-                    "Program",
-                    options=list(ALL_PROGRAMS.keys()),
-                    required=True,
-                    width="medium"),
-                "Balance": st.column_config.NumberColumn(
-                    "Balance (pts)",
-                    min_value=0,
-                    step=1000,
-                    format="%d",
-                    width="small"),
-                "Status": st.column_config.SelectboxColumn(
-                    "Status",
-                    options=ALL_STATUSES,
-                    width="medium"),
-            },
-            key="profile_editor",
-        )
-
-        # Sync edits back to session state on any change
-        if edited is not None:
-            new_profile = {}
-            for _, row in edited.iterrows():
-                prog  = row["Program"]
-                bal   = int(row["Balance"]) if pd.notna(row["Balance"]) else 0
-                stat  = row["Status"] if pd.notna(row["Status"]) else "None"
-                cat   = get_cat(prog)
-                # Validate status is legal for this program
-                if cat and prog in ALL_PROGRAMS:
-                    valid = ALL_PROGRAMS[prog]["statuses"]
-                    if stat not in valid:
-                        stat = valid[0]
-                new_profile[prog] = {"balance": bal, "status": stat}
-            st.session_state.profile = new_profile
-
-        if len(edited) == 0:
-            st.session_state.profile = {}
-
+    if not profile:
+        st.info("No programs added yet. Use the form below to get started.")
     else:
-        st.info("No programs added yet. Use the form below to add your first program.")
+        for cat_name, cat_progs in PROGRAMS.items():
+            cat_entries = {k: v for k, v in profile.items() if k in cat_progs}
+            if not cat_entries:
+                continue
 
-    # ── Add program form ──
+            # Category heading
+            st.markdown(
+                f'<p style="font-size:11px;font-weight:700;color:#999;'
+                f'text-transform:uppercase;letter-spacing:.06em;'
+                f'margin:1rem 0 4px;">{cat_name}</p>',
+                unsafe_allow_html=True)
+            st.markdown(
+                '<div style="border-top:1px solid #e8e8e8;margin-bottom:2px;"></div>',
+                unsafe_allow_html=True)
+
+            for prog_name, entry in cat_entries.items():
+                pdata  = ALL_PROGRAMS[prog_name]
+                color  = pdata["color"]
+                status = entry["status"]
+                bal    = entry["balance"]
+
+                if editing == prog_name:
+                    # ── Inline edit row ──
+                    st.markdown(
+                        f'<div style="background:#f0f6ff;border:1px solid #c5d8f7;'
+                        f'border-radius:8px;padding:6px 10px;margin:4px 0;">' 
+                        f'<span style="font-size:12px;color:#1a56cc;font-weight:500;">'
+                        f'Editing — {prog_name}</span></div>',
+                        unsafe_allow_html=True)
+                    e1, e2, e3, e4 = st.columns([2, 2, 1, 1])
+                    with e1:
+                        new_bal = st.number_input(
+                            "Balance", min_value=0, step=1000, value=bal,
+                            key=f"ebal_{prog_name}", label_visibility="collapsed")
+                    with e2:
+                        idx = pdata["statuses"].index(status)                             if status in pdata["statuses"] else 0
+                        new_status = st.selectbox(
+                            "Status", pdata["statuses"], index=idx,
+                            key=f"estat_{prog_name}", label_visibility="collapsed")
+                    with e3:
+                        if st.button("Save", key=f"save_{prog_name}",
+                                     use_container_width=True, type="primary"):
+                            st.session_state.profile[prog_name] = {
+                                "balance": new_bal, "status": new_status}
+                            st.session_state.editing = None
+                            st.rerun()
+                    with e4:
+                        if st.button("Cancel", key=f"cancel_{prog_name}",
+                                     use_container_width=True):
+                            st.session_state.editing = None
+                            st.rerun()
+
+                else:
+                    # ── View row ──
+                    is_active = status not in ["None", "Standard"]
+                    pill_bg   = "#e6f4ea" if is_active else "#f0f0f0"
+                    pill_col  = "#1e5c2a" if is_active else "#666"
+
+                    # Single st.columns call — info wide, two narrow icon buttons
+                    r_info, r_edit, r_del = st.columns([7, 1, 1])
+
+                    with r_info:
+                        st.markdown(
+                            f'<div style="display:flex;align-items:center;gap:10px;'
+                            f'padding:8px 0;border-bottom:1px solid #f5f5f5;">'
+                            f'<span style="width:9px;height:9px;border-radius:50%;'
+                            f'background:{color};flex-shrink:0;display:inline-block;"></span>'
+                            f'<span style="font-size:13px;font-weight:600;color:#111;'
+                            f'flex:1;">{prog_name}</span>'
+                            f'<span style="font-size:13px;color:#555;'
+                            f'white-space:nowrap;">{bal:,} pts</span>'
+                            f'<span style="display:inline-block;padding:2px 10px;'
+                            f'border-radius:20px;font-size:11px;font-weight:500;'
+                            f'background:{pill_bg};color:{pill_col};'
+                            f'white-space:nowrap;margin-left:4px;">{status}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True)
+
+                    with r_edit:
+                        if st.button("Edit", key=f"edit_{prog_name}",
+                                     use_container_width=True,
+                                     help=f"Edit {prog_name}"):
+                            st.session_state.editing = prog_name
+                            st.rerun()
+
+                    with r_del:
+                        if st.button("Remove", key=f"del_{prog_name}",
+                                     use_container_width=True,
+                                     help=f"Remove {prog_name}"):
+                            del st.session_state.profile[prog_name]
+                            if st.session_state.editing == prog_name:
+                                st.session_state.editing = None
+                            st.rerun()
+
+        # Summary bar
+        total = sum(e["balance"] for e in profile.values())
+        elite = sum(1 for e in profile.values()
+                    if e["status"] not in ["None", "Standard"])
+        st.markdown(
+            f'<div style="margin-top:1rem;padding:.75rem 1rem;background:#f7f7f7;'
+            f'border-radius:8px;font-size:13px;color:#555;">'
+            f'<b>{len(profile)}</b> programs &nbsp;&middot;&nbsp; '
+            f'<b>{total:,}</b> total points &nbsp;&middot;&nbsp; '
+            f'<b>{elite}</b> elite status(es)'
+            f'</div>',
+            unsafe_allow_html=True)
+
+    # ── Add program ──
     st.markdown("---")
     st.markdown("**Add a program**")
 
-    ac1, ac2, ac3, ac4, ac5 = st.columns([1.4, 1.8, 1.2, 1.8, 0.7])
+    ac1, ac2, ac3, ac4, ac5 = st.columns([1.4, 1.8, 1.4, 1.8, 0.8])
     with ac1:
         add_cat = st.selectbox("Category", list(PROGRAMS.keys()),
-                               key="add_cat", label_visibility="visible")
+                               key="add_cat", label_visibility="collapsed")
     already_added = set(profile.keys())
     available = [p for p in PROGRAMS[add_cat] if p not in already_added]
     with ac2:
         if available:
             add_prog = st.selectbox("Program", available,
-                                    key="add_prog", label_visibility="visible")
+                                    key="add_prog", label_visibility="collapsed")
         else:
             st.selectbox("Program", ["— all added —"], disabled=True,
-                         key="add_prog_dis", label_visibility="visible")
+                         key="add_prog_dis", label_visibility="collapsed")
             add_prog = None
     with ac3:
-        add_bal = st.number_input("Balance", min_value=0, step=1000, value=0,
-                                  key="add_bal", label_visibility="visible")
+        add_bal = st.number_input("Balance (pts)", min_value=0, step=1000, value=0,
+                                  key="add_bal", label_visibility="collapsed")
     with ac4:
         if add_prog:
             add_status = st.selectbox(
                 "Status", PROGRAMS[add_cat][add_prog]["statuses"],
-                key="add_status", label_visibility="visible")
+                key="add_status", label_visibility="collapsed")
         else:
             st.selectbox("Status", ["—"], disabled=True,
-                         key="add_status_dis", label_visibility="visible")
+                         key="add_status_dis", label_visibility="collapsed")
             add_status = None
     with ac5:
-        st.markdown("<div style='padding-top:28px;'>", unsafe_allow_html=True)
-        if st.button("Add", use_container_width=True, type="primary",
+        # Use empty label + markdown spacer to align button with inputs
+        st.markdown("<div style='margin-top:4px;'>", unsafe_allow_html=True)
+        if st.button("+ Add", use_container_width=True, type="primary",
                      disabled=not add_prog, key="add_btn"):
             st.session_state.profile[add_prog] = {
                 "balance": add_bal, "status": add_status}
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Summary
-    if profile:
-        total = sum(e["balance"] for e in profile.values())
-        elite = sum(1 for e in profile.values() if e["status"] not in ["None", "Standard"])
-        st.markdown(
-            f'<div style="margin-top:1rem;padding:.75rem 1rem;background:#f7f7f7;'
-            f'border-radius:8px;font-size:13px;color:#555;">'
-            f'<b>{len(profile)}</b> programs &nbsp;·&nbsp; '
-            f'<b>{total:,}</b> total points &nbsp;·&nbsp; '
-            f'<b>{elite}</b> elite status(es) active'
-            f'</div>',
-            unsafe_allow_html=True)
+    # Column hint labels
+    st.markdown(
+        '<div style="display:flex;gap:0;margin-top:.3rem;">' 
+        '<span style="font-size:11px;color:#bbb;flex:1.4;">Category</span>'
+        '<span style="font-size:11px;color:#bbb;flex:1.8;">Program</span>'
+        '<span style="font-size:11px;color:#bbb;flex:1.4;">Balance</span>'
+        '<span style="font-size:11px;color:#bbb;flex:1.8;">Status</span>'
+        '</div>',
+        unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
