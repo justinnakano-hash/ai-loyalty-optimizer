@@ -3,6 +3,14 @@ import anthropic
 import json
 import re
 from datetime import date, timedelta
+from metadata_refresh import load_metadata, is_stale, refresh_metadata, save_metadata
+
+# ── Load shared metadata (cached 24h, zero per-user cost) ──
+@st.cache_data(ttl=86400)  # 24 hours
+def get_metadata():
+    return load_metadata()
+
+META = get_metadata()
 
 st.set_page_config(
     page_title="AI Loyalty Optimizer",
@@ -412,6 +420,24 @@ def page_trip():
             st.caption("Sample data — no API key needed.")
         st.divider()
 
+        # ── Metadata status ──
+        gen_at = META.get("generated_at", "not yet generated")
+        if gen_at == "not-yet-refreshed":
+            st.warning("Market data not loaded. Run `python metadata_refresh.py` once to populate.")
+        else:
+            st.caption(f"Market data: {gen_at[:10]}")
+            if is_stale():
+                if st.button("Refresh market data", use_container_width=True):
+                    with st.spinner("Refreshing…"):
+                        try:
+                            data = refresh_metadata()
+                            save_metadata(data)
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Refresh failed: {e}")
+        st.divider()
+
         # ── What to search ──
         st.markdown("### What are you planning?")
         search_scope = st.radio(
@@ -608,14 +634,38 @@ def page_trip():
         if include_flight: scope.append("flight")
         if include_hotel:  scope.append("hotel")
         scope_str = " and ".join(scope)
-        return f"""Given the loyalty profile and trip, generate the optimal {scope_str} strategy in plain English.
+
+        # Pull relevant metadata to inject — keeps prompt focused
+        cpp_data    = json.dumps(META.get("point_valuations", {}),  indent=2)
+        xfr_data    = json.dumps(META.get("transfer_partners", {}), indent=2)
+        promos      = json.dumps(META.get("promotions", []),         indent=2)
+        benchmarks  = json.dumps(META.get("cash_rate_benchmarks", {}), indent=2)
+        thresholds  = json.dumps(META.get("cpp_thresholds", {}),    indent=2)
+
+        return f"""Generate the optimal {scope_str} loyalty strategy. Use the metadata below to calculate
+exact cent-per-point values, identify transfer paths, flag promotions, and decide if cash beats points.
 
 USER PROFILE & TRIP:
 {json.dumps(d, indent=2)}
 
-Return EXACTLY this JSON:
+CURRENT POINT VALUATIONS (cpp = cents per point at best redemption):
+{cpp_data}
+
+TRANSFER PARTNERS & RATIOS:
+{xfr_data}
+
+ACTIVE PROMOTIONS:
+{promos}
+
+CASH RATE BENCHMARKS:
+{benchmarks}
+
+CPP DECISION THRESHOLDS:
+{thresholds}
+
+Return EXACTLY this JSON (no markdown, no extra text):
 {{
-  "plain_english": "One friendly sentence — no jargon",
+  "plain_english": "One friendly sentence summarising the strategy — no jargon",
   "route_display": {{"origin": "{origin_city}", "destination": "{dest_city}"}},
   "hero": {{
     "flight_pts": "e.g. 60,000 Chase pts",
@@ -630,9 +680,69 @@ Return EXACTLY this JSON:
   "alternatives": [{{"name":"","desc":"","trade":""}}],
   "card": {{"name":"","bonus":"","why":""}},
   "status": {{"airline":"","hotel":""}},
-  "confidence": ""
+  "confidence": "",
+  "points_analysis": {{
+    "flight": {{
+      "status": "covered|shortfall|not_applicable",
+      "required_pts": 0,
+      "program_recommended": "",
+      "cpp_achieved": 0.0,
+      "cpp_alternatives": [
+        {{"label":"","cpp":0.0}}
+      ],
+      "bars": [
+        {{"name":"","have":0,"need":0,"pct":0,"color":"","surplus_or_gap":""}}
+      ],
+      "transfer_options": [
+        {{"from_program":"","to_program":"","ratio":"","have":0,"need":0,"feasible":true}}
+      ]
+    }},
+    "hotel": {{
+      "status": "covered|shortfall|not_applicable",
+      "required_pts": 0,
+      "program_recommended": "",
+      "cpp_achieved": 0.0,
+      "cpp_alternatives": [
+        {{"label":"","cpp":0.0}}
+      ],
+      "bars": [
+        {{"name":"","have":0,"need":0,"pct":0,"color":"","surplus_or_gap":""}}
+      ],
+      "transfer_options": [
+        {{"from_program":"","to_program":"","ratio":"","have":0,"need":0,"feasible":true}}
+      ],
+      "tip": "Actionable suggestion if shortfall exists"
+    }}
+  }},
+  "cash_vs_points": {{
+    "recommendation": "points|cash|similar",
+    "points_option": {{
+      "out_of_pocket": "e.g. ~$150",
+      "pts_used": 0,
+      "pts_value_usd": "e.g. ~$1,560",
+      "cpp": 0.0
+    }},
+    "cash_option": {{
+      "total_cost": "e.g. $1,240",
+      "pts_saved": 0,
+      "pts_saved_value": "e.g. ~$1,560",
+      "net_vs_points": "e.g. +$320 better"
+    }},
+    "verdict": "Plain English explanation of which is better and why"
+  }},
+  "promotions": [
+    {{
+      "title": "",
+      "description": "",
+      "type": "transfer_bonus|sale_fare|earn_bonus|status_promo",
+      "tags": [],
+      "expires": "",
+      "relevant_to_this_trip": true
+    }}
+  ]
 }}
-Use city names not airport codes. Be friendly. Do NOT assume real-time availability."""
+Use city names not airport codes. Keep everything friendly. Do NOT assume real-time seat availability.
+Use the metadata CPP values and thresholds to make the cash vs points recommendation mathematically."""
 
     def call_claude(key, data):
         client = anthropic.Anthropic(api_key=key)
@@ -805,6 +915,177 @@ Use city names not airport codes. Be friendly. Do NOT assume real-time availabil
                 unsafe_allow_html=True)
 
         st.caption(f"Confidence: {r.get('confidence','')}")
+
+        # ── Points gap analysis ──
+        pa = r.get("points_analysis", {})
+        if pa:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
+                'letter-spacing:.06em;margin:0 0 8px;">Points gap analysis</p>',
+                unsafe_allow_html=True)
+            for section_key, section_label in [("flight","Flight"), ("hotel","Hotel")]:
+                sec = pa.get(section_key, {})
+                if not sec or sec.get("status") == "not_applicable":
+                    continue
+                status    = sec.get("status","")
+                pill_html = {
+                    "covered":  '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;background:#e6f4ea;color:#1e5c2a;">&#10003; Covered</span>',
+                    "shortfall":'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;background:#fff3e0;color:#7a5700;">&#9650; Shortfall</span>',
+                }.get(status, "")
+                # Bars
+                bars_html = ""
+                for b in sec.get("bars", []):
+                    pct  = min(int(b.get("pct", 0)), 100)
+                    sg   = b.get("surplus_or_gap","")
+                    sg_c = "#1e5c2a" if "+" in sg else "#cc3333"
+                    bars_html += (
+                        f'<div style="margin-bottom:12px;">'
+                        f'<div style="display:flex;justify-content:space-between;margin-bottom:4px;">'
+                        f'<span style="font-size:12px;font-weight:500;color:#111;">{b.get("name","")}</span>'
+                        f'<span style="font-size:11px;color:#888;">{b.get("have",0):,} pts available</span>'
+                        f'</div>'
+                        f'<div style="height:9px;background:#f0f0f0;border-radius:5px;position:relative;">'
+                        f'<div style="position:absolute;height:100%;width:{pct}%;background:{b.get("color","#378ADD")};border-radius:5px;"></div>'
+                        f'</div>'
+                        f'<div style="display:flex;justify-content:space-between;margin-top:3px;">'
+                        f'<span style="font-size:11px;color:#888;">Need {b.get("need",0):,} pts</span>'
+                        f'<span style="font-size:11px;font-weight:500;color:{sg_c};">{sg}</span>'
+                        f'</div></div>'
+                    )
+                # CPP alternatives
+                cpp_html = ""
+                best_cpp = max((c.get("cpp",0) for c in sec.get("cpp_alternatives",[])), default=0)
+                for c in sec.get("cpp_alternatives",[]):
+                    is_best = c.get("cpp",0) == best_cpp
+                    bg  = "#e6f4ea" if is_best else "#f7f7f7"
+                    fc  = "#1e5c2a" if is_best else "#555"
+                    badge = '<span style="font-size:9px;font-weight:700;color:#1e5c2a;text-transform:uppercase;letter-spacing:.04em;display:block;">Best value</span>' if is_best else ""
+                    cpp_html += (
+                        f'<div style="flex:1;background:{bg};border-radius:8px;padding:.65rem .85rem;">'
+                        f'{badge}'
+                        f'<p style="font-size:11px;color:{fc};margin:0 0 2px;">{c.get("label","")}</p>'
+                        f'<p style="font-size:18px;font-weight:500;color:{fc};margin:0;">{c.get("cpp",0):.1f}¢/pt</p>'
+                        f'</div>'
+                    )
+                # Transfer options
+                xfr_html = ""
+                for x in sec.get("transfer_options",[]):
+                    ok  = x.get("feasible", False)
+                    fc  = "#1e5c2a" if ok else "#cc3333"
+                    xfr_html += (
+                        f'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;'
+                        f'border-bottom:0.5px solid #f0f0f0;font-size:12px;">'
+                        f'<span style="font-weight:500;color:#111;flex:1.3;">{x.get("from_program","")}</span>'
+                        f'<span style="color:#bbb;">→</span>'
+                        f'<span style="color:#111;flex:1.3;">{x.get("to_program","")}</span>'
+                        f'<span style="color:#888;flex:.6;text-align:center;">{x.get("ratio","")}</span>'
+                        f'<span style="font-weight:500;color:{fc};flex:1;text-align:right;">'
+                        f'Need {x.get("need",0):,} · have {x.get("have",0):,}</span>'
+                        f'</div>'
+                    )
+                tip_html = ""
+                if sec.get("tip"):
+                    tip_html = (
+                        f'<div style="margin:.75rem 0 0;padding:.65rem .9rem;background:#fff8e6;'
+                        f'border-radius:8px;font-size:12px;color:#7a5700;line-height:1.5;">'
+                        f'<strong>Tip:</strong> {sec["tip"]}</div>'
+                    )
+                st.markdown(
+                    f'<div style="background:#fff;border:0.5px solid #e8e8e8;border-radius:12px;'
+                    f'overflow:hidden;margin-bottom:.75rem;">'
+                    f'<div style="padding:.9rem 1.1rem;border-bottom:0.5px solid #e8e8e8;'
+                    f'display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
+                    f'<div><p style="font-size:14px;font-weight:500;color:#111;margin:0 0 2px;">'
+                    f'{section_label} — {sec.get("program_recommended","")}</p>'
+                    f'<p style="font-size:12px;color:#888;margin:0;">Need {sec.get("required_pts",0):,} pts</p>'
+                    f'</div>{pill_html}</div>'
+                    f'<div style="padding:.9rem 1.1rem;">{bars_html}</div>'
+                    f'{"<div style=padding:0 1.1rem .9rem;><p style=font-size:11px;font-weight:500;color:#888;margin:0 0 6px;>Transfer options to close the gap</p>" + xfr_html + "</div>" if xfr_html else ""}'
+                    f'<div style="display:flex;gap:8px;padding:.75rem 1.1rem;'
+                    f'border-top:0.5px solid #e8e8e8;">{cpp_html}</div>'
+                    f'{tip_html}'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        # ── Cash vs Points ──
+        cvp = r.get("cash_vs_points", {})
+        if cvp:
+            rec  = cvp.get("recommendation","")
+            po   = cvp.get("points_option",{})
+            co   = cvp.get("cash_option",{})
+            pts_winner  = rec == "points"
+            cash_winner = rec == "cash"
+            def cmp_card(winner, label, main_val, main_sub, details, badge="Better deal"):
+                bdr   = "2px solid #3B6D11" if winner else "0.5px solid #e8e8e8"
+                bdge  = f'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#e6f4ea;color:#1e5c2a;">{badge}</span>' if winner else ""
+                rows  = "".join(
+                    f'<div style="display:flex;justify-content:space-between;font-size:12px;color:#888;margin-bottom:2px;">'
+                    f'<span>{k}</span><span style="font-weight:500;color:#111;">{v}</span></div>'
+                    for k,v in details.items())
+                return (
+                    f'<div style="flex:1;border:{bdr};border-radius:12px;padding:.9rem 1.1rem;">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+                    f'<span style="font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.04em;">{label}</span>{bdge}</div>'
+                    f'<p style="font-size:22px;font-weight:500;color:#111;margin-bottom:2px;">{main_val}</p>'
+                    f'<p style="font-size:12px;color:#888;margin-bottom:10px;">{main_sub}</p>'
+                    f'<div style="border-top:0.5px solid #f0f0f0;padding-top:8px;">{rows}</div>'
+                    f'</div>'
+                )
+            pts_card  = cmp_card(
+                pts_winner, "Burn points",
+                po.get("out_of_pocket","—"), "out of pocket",
+                {"Points used": f'{po.get("pts_used",0):,}',
+                 "Points value": po.get("pts_value_usd","—"),
+                 "Effective CPP": f'{po.get("cpp",0):.1f}¢'})
+            cash_card = cmp_card(
+                cash_winner, "Pay cash",
+                co.get("total_cost","—"), "total cost",
+                {"Points saved": f'{co.get("pts_saved",0):,}',
+                 "Points kept value": co.get("pts_saved_value","—"),
+                 "Net vs points": co.get("net_vs_points","—")})
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
+                'letter-spacing:.06em;margin:0 0 8px;">Cash vs points</p>',
+                unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="display:flex;gap:.75rem;margin-bottom:.75rem;">{pts_card}{cash_card}</div>',
+                unsafe_allow_html=True)
+            if cvp.get("verdict"):
+                st.markdown(
+                    f'<div style="background:#f7f7f7;border-radius:8px;padding:.75rem 1rem;'
+                    f'font-size:13px;color:#555;line-height:1.6;">{cvp["verdict"]}</div>',
+                    unsafe_allow_html=True)
+
+        # ── Active promotions ──
+        promos = r.get("promotions", [])
+        relevant = [p for p in promos if p.get("relevant_to_this_trip", True)]
+        if relevant:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
+                'letter-spacing:.06em;margin:0 0 8px;">Active promotions worth knowing</p>',
+                unsafe_allow_html=True)
+            for p in relevant:
+                tags_html = "".join(
+                    f'<span style="font-size:11px;padding:2px 8px;border-radius:20px;'
+                    f'background:#e8f0fe;color:#1a56cc;margin-right:4px;">{t}</span>'
+                    for t in p.get("tags",[]))
+                expires = f'<p style="font-size:11px;color:#bbb;margin:5px 0 0;">Expires: {p["expires"]}</p>' if p.get("expires") else ""
+                st.markdown(
+                    f'<div style="border:0.5px solid #e8e8e8;border-radius:12px;'
+                    f'padding:.9rem 1.1rem;margin-bottom:.5rem;display:flex;gap:12px;">'
+                    f'<div style="width:34px;height:34px;border-radius:8px;background:#e8f0fe;'
+                    f'display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;">&#9889;</div>'
+                    f'<div><p style="font-size:13px;font-weight:500;color:#111;margin:0 0 3px;">{p.get("title","")}</p>'
+                    f'<p style="font-size:12px;color:#666;margin:0 0 6px;line-height:1.5;">{p.get("description","")}</p>'
+                    f'{tags_html}{expires}</div></div>',
+                    unsafe_allow_html=True)
+
+        # ── Metadata freshness note ──
+        gen_at = META.get("generated_at","unknown")
+        st.caption(f"Market data refreshed: {gen_at[:10] if len(gen_at) > 9 else gen_at}")
 
     # ── Execute ──
     if mock_mode:
