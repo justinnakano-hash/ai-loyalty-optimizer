@@ -2,6 +2,7 @@ import streamlit as st
 import anthropic
 import json
 import re
+from datetime import date, timedelta
 
 st.set_page_config(
     page_title="AI Loyalty Optimizer",
@@ -411,40 +412,142 @@ def page_trip():
             st.caption("Sample data — no API key needed.")
         st.divider()
 
-        st.markdown("### Where are you flying?")
-
-        # Origin — searchable selectbox
-        origin_label = st.selectbox(
-            "Flying from",
-            AIRPORT_LABELS,
-            index=AIRPORT_LABELS.index("San Francisco, CA — SFO (SFO)"),
-            key="origin_sel")
-        origin_code = AIRPORTS[origin_label]
-        origin_city = origin_label.split(" —")[0]
-        st.caption(f"Airport code: **{origin_code}**")
-
-        # Destination — searchable selectbox
-        dest_label = st.selectbox(
-            "Flying to",
-            AIRPORT_LABELS,
-            index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
-            key="dest_sel")
-        dest_code = AIRPORTS[dest_label]
-        dest_city = dest_label.split(" —")[0]
-        st.caption(f"Airport code: **{dest_code}**")
+        # ── What to search ──
+        st.markdown("### What are you planning?")
+        search_scope = st.radio(
+            "Optimize for",
+            ["Flight + Hotel", "Flight only", "Hotel only"],
+            horizontal=True, key="search_scope")
+        include_flight = search_scope in ["Flight + Hotel", "Flight only"]
+        include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
 
         st.divider()
-        st.markdown("### Trip details")
-        dates       = st.text_input("Travel dates",  value="June 10–20, 2026")
-        nights      = st.number_input("Nights", min_value=1, max_value=30, value=5)
-        cabin       = st.selectbox("Cabin class",
-                                   ["Economy", "Premium Economy", "Business", "First"])
-        hotel_style = st.selectbox("Hotel style", ["Budget", "Standard", "Luxury"])
-        val_exp     = st.slider("Priority", 1, 10, 5,
-                                help="1 = maximize points value  ·  10 = maximize experience quality")
-        st.caption("Value ← · → Experience")
+
+        # ── Flight options ──
+        if include_flight:
+            st.markdown("### Flight")
+
+            trip_type = st.radio(
+                "Trip type", ["Round trip", "One way"],
+                horizontal=True, key="trip_type")
+            is_roundtrip = trip_type == "Round trip"
+
+            origin_label = st.selectbox(
+                "Flying from", AIRPORT_LABELS,
+                index=AIRPORT_LABELS.index("San Francisco, CA — SFO (SFO)"),
+                key="origin_sel")
+            origin_code = AIRPORTS[origin_label]
+            origin_city = origin_label.split(" —")[0]
+            st.caption(f"Airport: **{origin_code}**")
+
+            dest_label = st.selectbox(
+                "Flying to", AIRPORT_LABELS,
+                index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
+                key="dest_sel")
+            dest_code = AIRPORTS[dest_label]
+            dest_city = dest_label.split(" —")[0]
+            st.caption(f"Airport: **{dest_code}**")
+
+            cabin = st.selectbox("Cabin class",
+                                 ["Economy", "Premium Economy", "Business", "First"],
+                                 key="cabin_sel")
+
+            # ── Date picker ──
+            st.markdown("**Departure date**")
+            depart_date = st.date_input(
+                "Departure", value=date(2026, 6, 10),
+                min_value=date.today(),
+                label_visibility="collapsed", key="depart_date")
+
+            if is_roundtrip:
+                st.markdown("**Return date**")
+                return_date = st.date_input(
+                    "Return",
+                    value=depart_date + timedelta(days=10),
+                    min_value=depart_date + timedelta(days=1),
+                    label_visibility="collapsed", key="return_date")
+                flight_nights = (return_date - depart_date).days
+                st.caption(f"{flight_nights} nights away")
+            else:
+                return_date  = None
+                flight_nights = None
+
+        else:
+            # Defaults when flight not selected
+            origin_city = ""; origin_code = ""
+            dest_city   = ""; dest_code   = ""
+            cabin = "Economy"
+            depart_date   = date.today()
+            return_date   = None
+            flight_nights = None
+            is_roundtrip  = False
+
+        st.divider()
+
+        # ── Hotel options ──
+        if include_hotel:
+            st.markdown("### Hotel")
+            hotel_style = st.selectbox("Hotel style",
+                                       ["Budget", "Standard", "Luxury"],
+                                       key="hotel_style_sel")
+
+            if include_flight and is_roundtrip:
+                # Auto-fill nights from flight dates
+                hotel_nights = flight_nights
+                st.caption(f"Staying **{hotel_nights} nights** (matches your flight dates)")
+            elif include_flight and not is_roundtrip:
+                hotel_nights = st.number_input(
+                    "Nights", min_value=1, max_value=60, value=5,
+                    key="hotel_nights_input")
+            else:
+                # Hotel only — need own date range
+                st.markdown("**Check-in date**")
+                checkin_date = st.date_input(
+                    "Check-in", value=date(2026, 6, 10),
+                    min_value=date.today(),
+                    label_visibility="collapsed", key="checkin_date")
+                st.markdown("**Check-out date**")
+                checkout_date = st.date_input(
+                    "Check-out",
+                    value=checkin_date + timedelta(days=5),
+                    min_value=checkin_date + timedelta(days=1),
+                    label_visibility="collapsed", key="checkout_date")
+                hotel_nights = (checkout_date - checkin_date).days
+                depart_date  = checkin_date
+                st.caption(f"{hotel_nights} nights")
+
+                # For hotel-only, ask destination city
+                if not include_flight:
+                    dest_label = st.selectbox(
+                        "Destination city", AIRPORT_LABELS,
+                        index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
+                        key="hotel_dest_sel")
+                    dest_city = dest_label.split(" —")[0]
+                    dest_code = AIRPORTS[dest_label]
+        else:
+            hotel_style  = "Standard"
+            hotel_nights = None
+
+        st.divider()
+
+        # ── Shared preference ──
+        val_exp = st.slider("Value ← · → Experience", 1, 10, 5,
+                            help="1 = maximize points value  ·  10 = maximize experience quality")
+
         st.divider()
         run = st.button("Find My Best Trip", type="primary", use_container_width=True)
+
+        # Build a clean date summary string for the prompt
+        if include_flight and is_roundtrip:
+            dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
+        elif include_flight:
+            dates_str = f"{depart_date.strftime('%b %d, %Y')} (one way)"
+        elif include_hotel:
+            dates_str = f"{depart_date.strftime('%b %d')} – {(depart_date + timedelta(days=hotel_nights)).strftime('%b %d, %Y')}"
+        else:
+            dates_str = ""
+
+        nights = hotel_nights if hotel_nights else (flight_nights or 0)
 
     # ── Main panel ──
     st.markdown("## Plan a Trip")
@@ -463,7 +566,7 @@ def page_trip():
     st.markdown("---")
 
     if not run:
-        st.info("Select your origin, destination, and trip details in the sidebar, then click **Find My Best Trip**.")
+        st.info("Configure your trip in the sidebar — choose flight, hotel, or both — then click **Find My Best Trip**.")
         return
 
     # ── Build API payload ──
@@ -482,14 +585,17 @@ def page_trip():
             "points":      {"credit_cards": cc, "airline_miles": al, "hotel_points": ht},
             "status":      {"airlines": ast, "hotels": hst},
             "trip":        {
-                "origin":      f"{origin_city} ({origin_code})",
-                "destination": f"{dest_city} ({dest_code})",
-                "dates":       dates,
-                "nights":      int(nights),
+                "origin":        f"{origin_city} ({origin_code})" if origin_city else "",
+                "destination":   f"{dest_city} ({dest_code})" if dest_city else "",
+                "dates":         dates_str,
+                "nights":        int(nights) if nights else 0,
+                "trip_type":     "Round trip" if is_roundtrip else "One way",
+                "include_flight": include_flight,
+                "include_hotel":  include_hotel,
             },
             "preferences": {
-                "cabin":               cabin,
-                "hotel_style":         hotel_style,
+                "cabin":               cabin if include_flight else "N/A",
+                "hotel_style":         hotel_style if include_hotel else "N/A",
                 "value_vs_experience": val_exp,
             },
         }
@@ -498,7 +604,11 @@ def page_trip():
               "Return ONLY valid JSON, no markdown, no extra text.")
 
     def build_prompt(d):
-        return f"""Given the loyalty profile and trip, generate the optimal travel strategy in plain English.
+        scope = []
+        if include_flight: scope.append("flight")
+        if include_hotel:  scope.append("hotel")
+        scope_str = " and ".join(scope)
+        return f"""Given the loyalty profile and trip, generate the optimal {scope_str} strategy in plain English.
 
 USER PROFILE & TRIP:
 {json.dumps(d, indent=2)}
@@ -548,31 +658,61 @@ Use city names not airport codes. Be friendly. Do NOT assume real-time availabil
             unsafe_allow_html=True)
 
         rd = r.get("route_display", {}); hero = r.get("hero", {})
-        st.markdown(f"""
-        <div class="hero"><div class="hero-top">
-          <div class="route">
-            <span>{rd.get("origin", origin_city)}</span>
-            <div class="route-line"></div>&rarr;<div class="route-line"></div>
-            <span>{rd.get("destination", dest_city)}</span>
-          </div>
-          <p class="tagline">{dates} &middot; {cabin} class &middot; {int(nights)} nights</p>
-        </div><div class="hero-bottom">
-          <div class="hero-stat">
-            <p class="hs-label">Flight</p>
-            <p class="hs-val">{hero.get("flight_pts","—")}</p>
-            <p class="hs-sub">points used</p>
-          </div>
-          <div class="hero-stat">
-            <p class="hs-label">Hotel</p>
-            <p class="hs-val">{hero.get("hotel_nights","—")}</p>
-            <p class="hs-sub">award nights</p>
-          </div>
-          <div class="hero-stat">
-            <p class="hs-label">Cash needed</p>
-            <p class="hs-val">{hero.get("cash","—")}</p>
-            <p class="hs-sub">taxes &amp; fees</p>
-          </div>
-        </div></div>""", unsafe_allow_html=True)
+
+        # Build dynamic tagline and hero stats based on scope
+        tagline_parts = []
+        if include_flight:
+            tagline_parts.append(f"{cabin} class")
+            if is_roundtrip:
+                tagline_parts.append("round trip")
+            else:
+                tagline_parts.append("one way")
+        if nights:
+            tagline_parts.append(f"{int(nights)} nights")
+        tagline_parts.append(dates_str)
+        tagline = " &middot; ".join(tagline_parts)
+
+        # Route display
+        if include_flight:
+            route_html = (
+                f'<span>{rd.get("origin", origin_city)}</span>'
+                f'<div class="route-line"></div>&rarr;'
+                + ('<div class="route-line"></div>&larr;' if is_roundtrip else '')
+                + ('<div class="route-line"></div>' if not is_roundtrip else '')
+                + f'<span>{rd.get("destination", dest_city)}</span>'
+            )
+        else:
+            route_html = f'<span>Hotel in {rd.get("destination", dest_city)}</span>'
+
+        # Hero stats — only show relevant ones
+        stats_html = ""
+        if include_flight:
+            stats_html += (
+                f'<div class="hero-stat">'
+                f'<p class="hs-label">Flight</p>'
+                f'<p class="hs-val">{hero.get("flight_pts","—")}</p>'
+                f'<p class="hs-sub">points used</p></div>'
+            )
+        if include_hotel:
+            stats_html += (
+                f'<div class="hero-stat">'
+                f'<p class="hs-label">Hotel</p>'
+                f'<p class="hs-val">{hero.get("hotel_nights","—")}</p>'
+                f'<p class="hs-sub">award nights</p></div>'
+            )
+        stats_html += (
+            f'<div class="hero-stat">'
+            f'<p class="hs-label">Cash needed</p>'
+            f'<p class="hs-val">{hero.get("cash","—")}</p>'
+            f'<p class="hs-sub">taxes &amp; fees</p></div>'
+        )
+
+        st.markdown(
+            f'<div class="hero"><div class="hero-top">'
+            f'<div class="route">{route_html}</div>'
+            f'<p class="tagline">{tagline}</p>'
+            f'</div><div class="hero-bottom">{stats_html}</div></div>',
+            unsafe_allow_html=True)
 
         bars = r.get("points_bars", [])
         if bars:
@@ -592,23 +732,31 @@ Use city names not airport codes. Be friendly. Do NOT assume real-time availabil
                 f'</div></div>', unsafe_allow_html=True)
 
         f = r.get("flight", {}); h = r.get("hotel", {})
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(
+        cards = []
+        if include_flight:
+            cards.append(
                 f'<div class="res-card"><p class="card-head">Flight</p>'
                 f'<div class="dr"><span class="dr-l">Airline</span><span class="dr-v">{f.get("airline","—")}</span></div>'
                 f'<div class="dr"><span class="dr-l">Book through</span><span class="dr-v">{f.get("book_via","—")}</span></div>'
                 f'<div class="dr"><span class="dr-l">Points used</span><span class="dr-v">{f.get("points","—")}</span></div>'
                 f'<div class="dr"><span class="dr-l">Cash fees</span><span class="dr-v">{f.get("cash_fees","—")}</span></div>'
-                f'</div>', unsafe_allow_html=True)
-        with c2:
-            st.markdown(
+                f'</div>'
+            )
+        if include_hotel:
+            cards.append(
                 f'<div class="res-card"><p class="card-head">Hotel</p>'
                 f'<div class="dr"><span class="dr-l">Property</span><span class="dr-v">{h.get("name","—")}</span></div>'
                 f'<div class="dr"><span class="dr-l">Book through</span><span class="dr-v">{h.get("book_via","—")}</span></div>'
                 f'<div class="dr"><span class="dr-l">Points used</span><span class="dr-v">{h.get("points","—")}</span></div>'
                 f'<div class="dr"><span class="dr-l">5th night</span><span class="dr-v">{h.get("fifth_night","—")}</span></div>'
-                f'</div>', unsafe_allow_html=True)
+                f'</div>'
+            )
+        if len(cards) == 2:
+            c1, c2 = st.columns(2)
+            with c1: st.markdown(cards[0], unsafe_allow_html=True)
+            with c2: st.markdown(cards[1], unsafe_allow_html=True)
+        elif len(cards) == 1:
+            st.markdown(cards[0], unsafe_allow_html=True)
 
         perks = r.get("perks", [])
         if perks:
