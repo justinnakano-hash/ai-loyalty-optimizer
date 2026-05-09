@@ -57,14 +57,88 @@ st.markdown("""
 .step-num   { background: #f0f0f0; border-radius: 50%; width: 24px; height: 24px; min-width: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #333; }
 .badge-best { display: inline-block; background: #e6f4ea; color: #2d7a3a; font-size: 12px; font-weight: 500; padding: 3px 12px; border-radius: 20px; margin-bottom: 10px; }
 .badge-rec  { display: inline-block; background: #e8f0fe; color: #1a56cc; font-size: 12px; font-weight: 500; padding: 3px 12px; border-radius: 20px; margin-bottom: 10px; }
+.badge-mock { display: inline-block; background: #fff3e0; color: #e65100; font-size: 12px; font-weight: 500; padding: 3px 12px; border-radius: 20px; margin-bottom: 10px; }
 .section-title { font-size: 13px; font-weight: 600; color: #333; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 12px; }
 .alt-card   { background: #f7f7f7; border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 8px; }
 .alt-name   { font-size: 14px; font-weight: 600; color: #111; margin: 0 0 4px; }
 .alt-desc   { font-size: 13px; color: #555; margin: 0 0 4px; }
 .alt-trade  { font-size: 12px; color: #999; margin: 0; }
 .confidence { font-size: 12px; color: #aaa; text-align: right; margin-top: 0.5rem; }
+.mock-banner {
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    font-size: 13px;
+    color: #e65100;
+    margin-bottom: 1rem;
+}
 </style>
 """, unsafe_allow_html=True)
+
+
+# ── Mock response (realistic fake data — no API call) ──
+MOCK_RESPONSE = {
+    "best_strategy": {
+        "summary": "Transfer Chase UR to Aeroplan and fly ANA Business direct. Use Amex MR for a Marriott mid-tier hotel with the 5th night free.",
+        "flight": {
+            "route": "SFO → NRT (ANA direct, ~11 hrs)",
+            "program": "Air Canada Aeroplan",
+            "points_required": "60,000 pts",
+            "transfer": "Transfer Chase UR → Aeroplan at 1:1 (instant). No fuel surcharges on ANA via Aeroplan."
+        },
+        "hotel": {
+            "name": "Courtyard Tokyo Ginza",
+            "program": "Marriott Bonvoy",
+            "points_per_night": "30,000 pts",
+            "total_points": "96,000 pts (5th night free)"
+        },
+        "perks": [
+            "Lie-flat business class seat on ANA — one of the best products on this route",
+            "No fuel surcharges when booking ANA via Aeroplan",
+            "ANA lounge access at NRT on arrival",
+            "5th hotel night free with Bonvoy consecutive award stay",
+            "80,000 Amex MR points left over for a future trip"
+        ],
+        "booking_steps": [
+            "Create a free Aeroplan account at aeroplan.com",
+            "Transfer 60,000 Chase UR → Aeroplan (1:1, usually instant)",
+            "Search ANA Business award SFO–NRT on aeroplan.com for June 10",
+            "Book and pay ~$150 in taxes and fees",
+            "Transfer 80,000 Amex MR → Marriott Bonvoy (becomes ~96,000 pts at 1:1.2)",
+            "Search Marriott award stays in Tokyo Ginza for June 10–15",
+            "Book 5 consecutive nights to trigger the free 5th night benefit"
+        ],
+        "reasoning": "Aeroplan is the best-value program for ANA Business on this route — it prices at 60k one-way versus 80k+ on other programs, with no fuel surcharges. Your Amex transfer to Bonvoy at 1:1.2 gives you 96k points which exactly covers 4 paid nights + 1 free at the Courtyard Ginza."
+    },
+    "alternatives": [
+        {
+            "name": "United MileagePlus (simpler)",
+            "description": "Transfer Chase UR directly to United and book ANA or United Polaris. Easier to search but costs 80,000 miles one-way.",
+            "tradeoff": "Burns 20,000 more points for the same seat"
+        },
+        {
+            "name": "Amex → ANA Mileage Club (best round-trip value)",
+            "description": "Transfer Amex MR to ANA directly at 1:1. ANA prices round-trip Business at ~88,000 miles — exceptional value if you want both directions covered.",
+            "tradeoff": "Requires ANA account; award space on own metal can be limited"
+        },
+        {
+            "name": "Cash hotel + save all points",
+            "description": "Book a great Tokyo hotel on cash (~$250–350/night) and save all 80k Amex for a future trip or second business class seat.",
+            "tradeoff": "Higher out-of-pocket but more flexibility with your Amex balance"
+        }
+    ],
+    "status_impact": {
+        "airline": "No elite status means no complimentary upgrades on the ground. ANA Business class itself includes ANA lounge access at NRT on arrival.",
+        "hotel": "Without Bonvoy status, standard room assignment applies. Consider the Bonvoy Brilliant card for automatic Gold status."
+    },
+    "credit_card_recommendation": {
+        "card": "Marriott Bonvoy Brilliant (Amex)",
+        "bonus": "185,000 bonus points after meeting spend — covers 2–3 luxury nights in Tokyo",
+        "reason": "Closes your hotel points gap entirely. Also includes automatic Marriott Gold status, a $300 annual dining credit, and Priority Pass lounge access for SFO departure."
+    },
+    "confidence": "High for flight · Medium for hotel availability (book early)"
+}
 
 
 # ── Sidebar ──
@@ -73,6 +147,15 @@ with st.sidebar:
     api_key = st.text_input("Anthropic API Key", type="password",
                             placeholder="sk-ant-...",
                             help="Get yours at console.anthropic.com")
+
+    st.divider()
+
+    # Mock mode toggle — prominent placement
+    mock_mode = st.toggle("🧪 Mock mode (no API calls)", value=True,
+                          help="Use fake data to test the UI without burning API tokens")
+    if mock_mode:
+        st.caption("Mock mode on — results use sample data, no API key needed.")
+
     st.divider()
 
     st.markdown("### 🎯 Points & Miles")
@@ -190,7 +273,7 @@ def metric_box(label, value, sub=""):
 
 
 # ── Result renderer ──
-def show_result(data):
+def show_result(data, is_mock=False):
     s    = data.get("best_strategy", {})
     f    = s.get("flight", {})
     h    = s.get("hotel",  {})
@@ -198,16 +281,22 @@ def show_result(data):
     si   = data.get("status_impact", {})
     cc   = data.get("credit_card_recommendation", {})
 
+    # Mock banner
+    if is_mock:
+        st.markdown('<div class="mock-banner">🧪 Mock mode — this is sample data. Switch off mock mode and add your API key to get a real strategy.</div>',
+                    unsafe_allow_html=True)
+
     # Hero
+    badge = '<span class="badge-mock">🧪 Mock result</span>' if is_mock else '<span class="badge-best">✓ Best strategy</span>'
     st.markdown(f"""
     <div class="card">
-        <span class="badge-best">✓ Best strategy</span>
+        {badge}
         <h2 style="margin:0 0 4px;font-size:22px;">{origin} → {destination}</h2>
         <p style="color:#666;margin:0;font-size:14px;">{cabin.title()} class · {dates} · {int(nights)} nights</p>
         <p style="color:#444;margin:1rem 0 0;font-size:14px;font-style:italic;">{s.get("summary","")}</p>
     </div>""", unsafe_allow_html=True)
 
-    # Metrics row
+    # Metrics
     m1, m2, m3, m4 = st.columns(4)
     with m1: metric_box("Points used (flight)", f.get("points_required","—"), f.get("program",""))
     with m2: metric_box("Points used (hotel)",  h.get("total_points","—"),    h.get("program",""))
@@ -296,23 +385,28 @@ st.markdown("# ✈️ AI Loyalty Optimizer")
 st.caption("Fill in your details in the sidebar and click **Optimize My Trip**.")
 
 if run:
-    if not api_key:
-        st.error("Please enter your Anthropic API key in the sidebar.")
-    elif not origin or not destination:
-        st.error("Please enter origin and destination airports.")
+    if mock_mode:
+        # Return fake data instantly — zero API calls
+        show_result(MOCK_RESPONSE, is_mock=True)
+
     else:
-        with st.spinner("Optimizing your trip…"):
-            try:
-                result = call_claude(api_key, build_user_data())
-                show_result(result)
-            except json.JSONDecodeError as e:
-                st.error(f"Claude returned invalid JSON: {e}")
-            except anthropic.AuthenticationError:
-                st.error("Invalid API key — check console.anthropic.com")
-            except anthropic.APIError as e:
-                st.error(f"Anthropic API error: {e}")
-            except Exception as e:
-                st.error(f"Unexpected error: {e}")
+        if not api_key:
+            st.error("Please enter your Anthropic API key in the sidebar, or switch on mock mode to test the UI.")
+        elif not origin or not destination:
+            st.error("Please enter origin and destination airports.")
+        else:
+            with st.spinner("Optimizing your trip…"):
+                try:
+                    result = call_claude(api_key, build_user_data())
+                    show_result(result, is_mock=False)
+                except json.JSONDecodeError as e:
+                    st.error(f"Claude returned invalid JSON: {e}")
+                except anthropic.AuthenticationError:
+                    st.error("Invalid API key — check console.anthropic.com")
+                except anthropic.APIError as e:
+                    st.error(f"Anthropic API error: {e}")
+                except Exception as e:
+                    st.error(f"Unexpected error: {e}")
 else:
     st.markdown("""
 <div class="card" style="max-width:540px;">
@@ -322,5 +416,7 @@ else:
     <div class="perk-item"><span style="color:#2d7a3a;">✓</span><span>Recommends the most efficient use of your points for flights and hotel</span></div>
     <div class="perk-item"><span style="color:#2d7a3a;">✓</span><span>Suggests credit cards if you are short on points</span></div>
     <div class="perk-item"><span style="color:#2d7a3a;">✓</span><span>Provides step-by-step booking instructions</span></div>
+    <br>
+    <p style="font-size:13px;color:#e65100;margin:0;">🧪 Mock mode is on by default — test the full UI instantly with no API key needed.</p>
 </div>
 """, unsafe_allow_html=True)
