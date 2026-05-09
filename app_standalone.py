@@ -197,9 +197,11 @@ def get_cat(name):
 # ─────────────────────────────────────────────
 #  SESSION STATE
 # ─────────────────────────────────────────────
-if "profile" not in st.session_state: st.session_state.profile = {}
-if "page"    not in st.session_state: st.session_state.page    = "profile"
-if "editing" not in st.session_state: st.session_state.editing = None
+if "profile"     not in st.session_state: st.session_state.profile     = {}
+if "page"        not in st.session_state: st.session_state.page        = "profile"
+if "editing"     not in st.session_state: st.session_state.editing     = None
+if "admin_authed" not in st.session_state: st.session_state.admin_authed = False
+if "mock_override" not in st.session_state: st.session_state.mock_override = None  # None | True | False
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
@@ -414,10 +416,15 @@ def page_trip():
         st.markdown("### Settings")
         api_key   = st.text_input("Anthropic API Key", type="password",
                                   placeholder="sk-ant-...")
-        mock_mode = st.toggle("Mock mode", value=True,
-                              help="Test the UI without using API tokens")
-        if mock_mode:
-            st.caption("Sample data — no API key needed.")
+        _override = st.session_state.get("mock_override", None)
+        if _override is not None:
+            mock_mode = _override
+            st.caption(f"Mock mode {'ON' if mock_mode else 'OFF'} (set by admin)")
+        else:
+            mock_mode = st.toggle("Mock mode", value=True,
+                                  help="Test the UI without using API tokens")
+            if mock_mode:
+                st.caption("Sample data — no API key needed.")
         st.divider()
 
         # ── Metadata status ──
@@ -1106,6 +1113,210 @@ Use the metadata CPP values and thresholds to make the cash vs points recommenda
                 st.error(f"Something went wrong: {e}")
 
 
+
+# ─────────────────────────────────────────────
+#  PAGE: ADMIN
+# ─────────────────────────────────────────────
+def page_admin():
+    """
+    Admin panel — access controlled by a password stored in st.secrets.
+
+    Required Streamlit secrets (set in Streamlit Cloud dashboard or .streamlit/secrets.toml):
+        [admin]
+        password   = "your-secret-password"
+        api_key    = "sk-ant-..."        # master API key for metadata refreshes
+    """
+
+    # ── Helper: read secrets safely ──
+    def get_secret(section, key, fallback=None):
+        try:
+            return st.secrets[section][key]
+        except (KeyError, FileNotFoundError):
+            return fallback
+
+    admin_pw  = get_secret("admin", "password")
+    master_key = get_secret("admin", "api_key")
+    secrets_configured = bool(admin_pw and master_key)
+
+    # ── Login wall ──
+    if not st.session_state.admin_authed:
+        st.markdown("## Admin")
+        st.markdown(
+            '<div style="max-width:360px;">',
+            unsafe_allow_html=True)
+
+        if not secrets_configured:
+            st.error(
+                "Admin secrets not configured. Add these to your Streamlit Cloud secrets:\n\n"
+                "```toml\n[admin]\npassword = \"your-password\"\n"
+                "api_key  = \"sk-ant-...\"\n```\n\n"
+                "Go to: Streamlit Cloud → your app → Settings → Secrets"
+            )
+            return
+
+        pw_input = st.text_input("Admin password", type="password",
+                                 placeholder="Enter password", key="admin_pw_input")
+        if st.button("Log in", type="primary", key="admin_login_btn"):
+            if pw_input == admin_pw:
+                st.session_state.admin_authed = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        return
+
+    # ── Authenticated ──
+    col_title, col_logout = st.columns([4, 1])
+    with col_title:
+        st.markdown("## Admin Panel")
+    with col_logout:
+        if st.button("Log out", key="admin_logout"):
+            st.session_state.admin_authed = False
+            st.session_state.page = "profile"
+            st.rerun()
+
+    st.caption(f"Logged in as admin · API key: {master_key[:12]}..." if master_key else "")
+    st.markdown("---")
+
+    # ── Section 1: Mock mode override ──
+    st.markdown("### Mock mode")
+    st.caption("Override the per-user mock mode toggle globally for all sessions.")
+
+    current = st.session_state.mock_override
+    label   = {None: "Follow user setting (default)", True: "Force ON for all users",
+                False: "Force OFF for all users"}.get(current, "Unknown")
+    st.info(f"Current override: **{label}**")
+
+    mc1, mc2, mc3 = st.columns(3)
+    with mc1:
+        if st.button("Follow user setting", use_container_width=True,
+                     type="primary" if current is None else "secondary",
+                     key="mock_none"):
+            st.session_state.mock_override = None
+            st.rerun()
+    with mc2:
+        if st.button("Force mock ON", use_container_width=True,
+                     type="primary" if current is True else "secondary",
+                     key="mock_on"):
+            st.session_state.mock_override = True
+            st.rerun()
+    with mc3:
+        if st.button("Force mock OFF", use_container_width=True,
+                     type="primary" if current is False else "secondary",
+                     key="mock_off"):
+            st.session_state.mock_override = False
+            st.rerun()
+
+    st.markdown("---")
+
+    # ── Section 2: API key ──
+    st.markdown("### API key")
+    st.caption(
+        "The master API key is stored securely in Streamlit secrets — never in the repo. "
+        "Update it in Streamlit Cloud → Settings → Secrets."
+    )
+    if master_key:
+        st.success(f"Master key configured: `{master_key[:16]}...{master_key[-4:]}`")
+    else:
+        st.error("No master API key found in secrets. Add `api_key` under `[admin]` in Streamlit secrets.")
+
+    st.markdown("---")
+
+    # ── Section 3: Metadata refresh ──
+    st.markdown("### Market data refresh")
+
+    gen_at    = META.get("generated_at", "never")
+    stale     = is_stale()
+    freshness = "Stale — older than 25 hours" if stale else "Fresh"
+    cost      = META.get("refresh_cost_usd", "unknown")
+
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
+    col_b.metric("Status",         freshness)
+    col_c.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
+
+    st.markdown("**What gets refreshed:**")
+    st.markdown(
+        "- Point valuations (CPP) for all 17 programs\n"
+        "- Transfer partner ratios\n"
+        "- Active promotions (transfer bonuses, sale fares, earn promos)\n"
+        "- Cash rate benchmarks by route and cabin class\n"
+        "- CPP decision thresholds"
+    )
+
+    if not master_key:
+        st.warning("Cannot refresh — no API key configured in secrets.")
+    else:
+        if st.button(
+            "Run metadata refresh now",
+            type="primary",
+            use_container_width=True,
+            key="admin_refresh_btn"
+        ):
+            with st.spinner("Calling Claude to refresh market data… (~30 seconds)"):
+                try:
+                    import os
+                    # Use master key from secrets for the refresh
+                    original_key = os.environ.get("ANTHROPIC_API_KEY")
+                    os.environ["ANTHROPIC_API_KEY"] = master_key
+                    data = refresh_metadata()
+                    save_metadata(data)
+                    if original_key:
+                        os.environ["ANTHROPIC_API_KEY"] = original_key
+                    st.cache_data.clear()
+                    st.success(
+                        f"Refresh complete! "
+                        f"{len(data.get('promotions',''))} promotions loaded · "
+                        f"Cost: ${data.get('refresh_cost_usd','?')} · "
+                        f"Commit metadata.json to your repo to persist."
+                    )
+                    st.json({
+                        "generated_at":     data.get("generated_at"),
+                        "programs_valued":  len(data.get("point_valuations",{})),
+                        "promotions_found": len(data.get("promotions",[])),
+                        "cost_usd":         data.get("refresh_cost_usd"),
+                    })
+                except Exception as e:
+                    st.error(f"Refresh failed: {e}")
+
+    st.markdown("---")
+
+    # ── Section 4: Current metadata preview ──
+    with st.expander("View current metadata.json"):
+        st.json(META)
+
+    # ── Section 5: Setup instructions ──
+    with st.expander("Setup instructions"):
+        st.markdown("""
+**1. Add secrets to Streamlit Cloud**
+
+Go to your app → Settings → Secrets and add:
+
+```toml
+[admin]
+password = "choose-a-strong-password"
+api_key  = "sk-ant-your-anthropic-key"
+```
+
+**2. Schedule daily refresh (GitHub Actions)**
+
+The workflow at `.github/workflows/refresh_metadata.yml` runs at midnight UTC.
+Add your API key to GitHub repo secrets as `ANTHROPIC_API_KEY`.
+
+**3. Access this page**
+
+Navigate here via the Admin nav button and enter your password.
+The session stays authenticated until you log out or close the browser.
+
+**4. Security model**
+
+- Password and API key live only in Streamlit secrets (encrypted, server-side)
+- Nothing sensitive is stored in the repo or in `metadata.json`
+- Admin session is per-browser (session state) — closing the tab logs you out
+- The admin route is not hidden by URL — it's protected by password only
+""")
+
+
 # ─────────────────────────────────────────────
 #  NAV + ROUTER
 # ─────────────────────────────────────────────
@@ -1113,8 +1324,8 @@ Use the metadata CPP values and thresholds to make the cash vs points recommenda
 # Title sits on its own line — clean and full width
 st.markdown("# AI Loyalty Optimizer")
 
-# Nav tabs rendered as inline buttons on one row below the title
-nav_col1, nav_col2, nav_spacer = st.columns([1.4, 1.4, 4])
+# Nav — My Profile | Plan a Trip | (Admin, small, right-aligned)
+nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
 with nav_col1:
     if st.button("My Profile", key="nav_profile", use_container_width=True,
                  type="primary" if st.session_state.page == "profile" else "secondary"):
@@ -1125,12 +1336,26 @@ with nav_col2:
                  type="primary" if st.session_state.page == "trip" else "secondary"):
         st.session_state.page = "trip"
         st.rerun()
+with nav_admin:
+    # Small lock icon — doesn't advertise "admin" to casual users
+    admin_label = "Admin" if st.session_state.admin_authed else "Admin"
+    if st.button(
+        admin_label, key="nav_admin", use_container_width=True,
+        type="primary" if st.session_state.page == "admin" else "secondary"
+    ):
+        st.session_state.page = "admin"
+        st.rerun()
 
 st.markdown(
     "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
     unsafe_allow_html=True)
 
+# Apply global mock override from admin if set
+_mock_override = st.session_state.get("mock_override", None)
+
 if st.session_state.page == "profile":
     page_profile()
+elif st.session_state.page == "admin":
+    page_admin()
 else:
     page_trip()
