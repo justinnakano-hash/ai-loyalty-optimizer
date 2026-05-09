@@ -144,14 +144,14 @@ MOCK = {
 
 # ── Sidebar ──
 with st.sidebar:
-    st.markdown("### ⚙️ Settings")
+    st.markdown("### Settings")
     api_key   = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...")
-    mock_mode = st.toggle("🧪 Mock mode", value=True, help="Test UI without API calls")
+    mock_mode = st.toggle("Mock mode", value=True, help="Test UI without API calls")
     if mock_mode:
         st.caption("Sample data — no API key needed.")
 
     st.divider()
-    st.markdown("### 🎯 My Loyalty Profile")
+    st.markdown("### My Loyalty Profile")
     st.caption("Set up once — reused for every query.")
 
     profile = st.session_state.profile
@@ -183,14 +183,14 @@ with st.sidebar:
                     )
                     col_save, col_cancel = st.columns(2)
                     with col_save:
-                        if st.button("💾 Save", key=f"save_{prog_name}", use_container_width=True):
+                        if st.button("Save", key=f"save_{prog_name}", use_container_width=True):
                             st.session_state.profile[prog_name] = {
                                 "balance": new_bal, "status": new_status
                             }
                             st.session_state.editing = None
                             st.rerun()
                     with col_cancel:
-                        if st.button("✕ Cancel", key=f"cancel_{prog_name}", use_container_width=True):
+                        if st.button("Cancel", key=f"cancel_{prog_name}", use_container_width=True):
                             st.session_state.editing = None
                             st.rerun()
 
@@ -198,24 +198,28 @@ with st.sidebar:
             else:
                 bal_fmt = f"{entry['balance']:,}"
                 status  = entry["status"]
-                col_info, col_edit, col_del = st.columns([5, 1, 1])
-                with col_info:
-                    color = prog_data["color"]
-                    st.markdown(
-                        f'<div style="font-size:13px;padding:4px 0;">'
-                        f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
-                        f'background:{color};margin-right:6px;vertical-align:middle;"></span>'
-                        f'<b>{prog_name}</b><br>'
-                        f'<span style="color:#666;font-size:12px;margin-left:14px;">'
-                        f'{bal_fmt} pts · {status}</span></div>',
-                        unsafe_allow_html=True
-                    )
+                color   = prog_data["color"]
+                sc      = "#2d7a3a" if status not in ["None", "Standard"] else "#999"
+                # Render entire row as HTML so buttons stay visually aligned
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                    f'padding:7px 0;border-bottom:1px solid #f5f5f5;">'
+                    f'<div style="font-size:13px;">'
+                    f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
+                    f'background:{color};margin-right:6px;vertical-align:middle;"></span>'
+                    f'<b>{prog_name}</b>'
+                    f'<span style="color:#999;font-weight:400;"> · {bal_fmt} pts</span><br>'
+                    f'<span style="color:{sc};font-size:12px;margin-left:14px;">{status}</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True
+                )
+                col_edit, col_del = st.columns([1, 1])
                 with col_edit:
-                    if st.button("✏️", key=f"edit_{prog_name}", help=f"Edit {prog_name}"):
+                    if st.button("Edit", key=f"edit_{prog_name}", use_container_width=True):
                         st.session_state.editing = prog_name
                         st.rerun()
                 with col_del:
-                    if st.button("🗑️", key=f"del_{prog_name}", help=f"Remove {prog_name}"):
+                    if st.button("Remove", key=f"del_{prog_name}", use_container_width=True):
                         del st.session_state.profile[prog_name]
                         if st.session_state.editing == prog_name:
                             st.session_state.editing = None
@@ -235,7 +239,7 @@ with st.sidebar:
         prog_data  = PROGRAMS[add_cat][add_prog]
         add_bal    = st.number_input("Points balance", min_value=0, step=1000, value=0, key="add_bal")
         add_status = st.selectbox("Your status", prog_data["statuses"], key="add_status")
-        if st.button("➕ Add to profile", use_container_width=True):
+        if st.button("+ Add to profile", use_container_width=True):
             st.session_state.profile[add_prog] = {"balance": add_bal, "status": add_status}
             st.rerun()
     else:
@@ -244,7 +248,7 @@ with st.sidebar:
     st.divider()
 
     # ── Trip ──
-    st.markdown("### ✈️ Trip")
+    st.markdown("### Trip")
     origin      = st.text_input("From (city)",    value="San Francisco")
     origin_code = st.text_input("Airport code",   value="SFO", max_chars=4).upper()
     destination = st.text_input("To (city)",       value="Tokyo")
@@ -256,7 +260,7 @@ with st.sidebar:
     val_exp     = st.slider("Value ← → Experience", 1, 10, 5)
 
     st.divider()
-    run = st.button("✈️ Find My Best Trip", type="primary", use_container_width=True)
+    run = st.button("Find My Best Trip", type="primary", use_container_width=True)
 
 
 # ── Build user data ──
@@ -350,15 +354,15 @@ def show_profile_summary():
 # ── Result renderer ──
 def render(r, is_mock=False):
     if is_mock:
-        st.markdown('<div class="mock-banner">🧪 Mock mode — sample data. Turn off mock mode and add your API key for a real strategy.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="mock-banner">Mock mode — sample data. Disable mock mode and add your API key for a real strategy.</div>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="plain-english">💡 <b>In plain English:</b> {r.get("plain_english","")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="plain-english"><b>In plain English:</b> {r.get("plain_english","")}</div>', unsafe_allow_html=True)
 
     rd = r.get("route_display", {}); hero = r.get("hero", {})
     st.markdown(f"""
     <div class="hero">
       <div class="hero-top">
-        <div class="route"><span>{rd.get("origin",origin)}</span><div class="route-line"></div>✈️<div class="route-line"></div><span>{rd.get("destination",destination)}</span></div>
+        <div class="route"><span>{rd.get("origin",origin)}</span><div class="route-line"></div>&rarr;<div class="route-line"></div><span>{rd.get("destination",destination)}</span></div>
         <p class="tagline">{dates} · {cabin.title()} class · {int(nights)} nights</p>
       </div>
       <div class="hero-bottom">
@@ -376,9 +380,9 @@ def render(r, is_mock=False):
     f = r.get("flight", {}); h = r.get("hotel", {})
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(f'<div class="card"><p class="card-head">✈️ Your flight</p><div class="dr"><span class="dr-l">Airline</span><span class="dr-v">{f.get("airline","—")}</span></div><div class="dr"><span class="dr-l">Book through</span><span class="dr-v">{f.get("book_via","—")}</span></div><div class="dr"><span class="dr-l">Points used</span><span class="dr-v">{f.get("points","—")}</span></div><div class="dr"><span class="dr-l">Cash fees</span><span class="dr-v">{f.get("cash_fees","—")}</span></div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card"><p class="card-head">Flight</p><div class="dr"><span class="dr-l">Airline</span><span class="dr-v">{f.get("airline","—")}</span></div><div class="dr"><span class="dr-l">Book through</span><span class="dr-v">{f.get("book_via","—")}</span></div><div class="dr"><span class="dr-l">Points used</span><span class="dr-v">{f.get("points","—")}</span></div><div class="dr"><span class="dr-l">Cash fees</span><span class="dr-v">{f.get("cash_fees","—")}</span></div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="card"><p class="card-head">🏨 Your hotel</p><div class="dr"><span class="dr-l">Property</span><span class="dr-v">{h.get("name","—")}</span></div><div class="dr"><span class="dr-l">Book through</span><span class="dr-v">{h.get("book_via","—")}</span></div><div class="dr"><span class="dr-l">Points used</span><span class="dr-v">{h.get("points","—")}</span></div><div class="dr"><span class="dr-l">5th night</span><span class="dr-v">{h.get("fifth_night","—")}</span></div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card"><p class="card-head">Hotel</p><div class="dr"><span class="dr-l">Property</span><span class="dr-v">{h.get("name","—")}</span></div><div class="dr"><span class="dr-l">Book through</span><span class="dr-v">{h.get("book_via","—")}</span></div><div class="dr"><span class="dr-l">Points used</span><span class="dr-v">{h.get("points","—")}</span></div><div class="dr"><span class="dr-l">5th night</span><span class="dr-v">{h.get("fifth_night","—")}</span></div></div>', unsafe_allow_html=True)
 
     perks = r.get("perks", [])
     if perks:
@@ -387,32 +391,32 @@ def render(r, is_mock=False):
     steps = r.get("booking_steps", [])
     if steps:
         sh = "".join(f'<div class="step"><div class="step-num">{i+1}</div><div><p class="step-title">{s["title"]}</p><p class="step-desc">{s["desc"]}</p></div></div>' for i, s in enumerate(steps))
-        st.markdown(f'<div class="steps-card"><p class="card-head">📋 How to book</p>{sh}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="steps-card"><p class="card-head">How to book</p>{sh}</div>', unsafe_allow_html=True)
 
     si = r.get("status", {})
     if si.get("airline") or si.get("hotel"):
         sc1, sc2 = st.columns(2)
-        if si.get("airline"): sc1.info(f"✈️ {si['airline']}")
-        if si.get("hotel"):   sc2.info(f"🏨 {si['hotel']}")
+        if si.get("airline"): sc1.info(f"Airline: {si['airline']}")
+        if si.get("hotel"):   sc2.info(f"Hotel: {si['hotel']}")
         st.markdown("<br>", unsafe_allow_html=True)
 
     alts = r.get("alternatives", [])
     if alts:
-        st.markdown('<p class="section-title">🔄 Other options</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-title">Other options</p>', unsafe_allow_html=True)
         for a in alts:
             trade = f'<p class="alt-trade">⚖️ {a["trade"]}</p>' if a.get("trade") else ""
             st.markdown(f'<div class="alt-chip"><p class="alt-name">{a.get("name","")}</p><p class="alt-desc">{a.get("desc","")}</p>{trade}</div>', unsafe_allow_html=True)
 
     cc = r.get("card", {})
     if cc.get("name"):
-        bonus = f'<p class="cc-bonus">🎁 {cc["bonus"]}</p>' if cc.get("bonus") else ""
-        st.markdown(f'<div class="cc-wrap"><p class="cc-eye">💳 Want to upgrade?</p><p class="cc-name">{cc["name"]}</p>{bonus}<p class="cc-why">{cc.get("why","")}</p></div>', unsafe_allow_html=True)
+        bonus = f'<p class="cc-bonus">{cc["bonus"]}</p>' if cc.get("bonus") else ""
+        st.markdown(f'<div class="cc-wrap"><p class="cc-eye">Good to know</p><p class="cc-name">{cc["name"]}</p>{bonus}<p class="cc-why">{cc.get("why","")}</p></div>', unsafe_allow_html=True)
 
-    st.caption(f"🎯 Confidence: {r.get('confidence','')}")
+    st.caption(f"Confidence: {r.get('confidence','')}")
 
 
 # ── Main ──
-st.markdown("# ✈️ AI Loyalty Optimizer")
+st.markdown("# AI Loyalty Optimizer")
 st.caption("Set up your loyalty profile once in the sidebar — then just enter your trip.")
 
 if run:
@@ -445,7 +449,7 @@ else:
     profile = st.session_state.profile
     if profile:
         show_profile_summary()
-        st.info("👈 Enter your trip details in the sidebar and click **Find My Best Trip**.")
+        st.info("Enter your trip details in the sidebar and click **Find My Best Trip**.")
     else:
         st.markdown("""
 <div style="background:#fff;border:1px solid #e8e8e8;border-radius:12px;padding:1.25rem;max-width:480px;">
