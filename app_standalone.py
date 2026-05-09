@@ -2,6 +2,7 @@ import streamlit as st
 import anthropic
 import json
 import re
+import pandas as pd
 
 st.set_page_config(
     page_title="AI Loyalty Optimizer",
@@ -9,13 +10,9 @@ st.set_page_config(
     layout="centered",
 )
 
-# ─────────────────────────────────────────────
-#  CSS
-# ─────────────────────────────────────────────
 st.markdown("""
 <style>
 .block-container { max-width:860px !important; padding-top:1.5rem !important; }
-
 .plain-english { background:#e6f4ea; border-radius:10px; padding:.9rem 1.1rem;
     font-size:14px; color:#1e5c2a; line-height:1.65; margin-bottom:1rem; }
 .hero { border:1px solid #e8e8e8; border-radius:12px; overflow:hidden; margin-bottom:1rem; }
@@ -78,19 +75,81 @@ st.markdown("""
 .cc-why  { font-size:13px; color:#555; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
-.col-hdr { font-size:11px; font-weight:600; color:#999;
-    text-transform:uppercase; letter-spacing:.05em; }
-
-/* Make icon-column st.buttons small and square */
-[data-testid="stHorizontalBlock"] > div:nth-last-child(1) button,
-[data-testid="stHorizontalBlock"] > div:nth-last-child(2) button {
-    padding: 0.15rem 0.25rem !important;
-    font-size: 15px !important;
-    min-height: 2rem !important;
-    line-height: 1 !important;
-}
 </style>
 """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+#  AIRPORTS — city → (display label, IATA code)
+# ─────────────────────────────────────────────
+AIRPORTS = {
+    "Atlanta, GA — Hartsfield-Jackson (ATL)":         "ATL",
+    "Austin, TX — Austin-Bergstrom (AUS)":             "AUS",
+    "Bangkok — Suvarnabhumi (BKK)":                    "BKK",
+    "Barcelona — El Prat (BCN)":                       "BCN",
+    "Beijing — Capital (PEK)":                         "PEK",
+    "Boston, MA — Logan (BOS)":                        "BOS",
+    "Buenos Aires — Ezeiza (EZE)":                     "EZE",
+    "Cairo — Cairo International (CAI)":               "CAI",
+    "Cancun — Cancun International (CUN)":             "CUN",
+    "Cape Town — Cape Town International (CPT)":       "CPT",
+    "Chicago, IL — O'Hare (ORD)":                      "ORD",
+    "Chicago, IL — Midway (MDW)":                      "MDW",
+    "Dallas, TX — DFW (DFW)":                          "DFW",
+    "Denver, CO — Denver International (DEN)":         "DEN",
+    "Dubai — Dubai International (DXB)":               "DXB",
+    "Dublin — Dublin Airport (DUB)":                   "DUB",
+    "Frankfurt — Frankfurt Airport (FRA)":             "FRA",
+    "Honolulu, HI — Daniel K. Inouye (HNL)":          "HNL",
+    "Hong Kong — Hong Kong International (HKG)":       "HKG",
+    "Houston, TX — George Bush (IAH)":                 "IAH",
+    "Istanbul — Istanbul Airport (IST)":               "IST",
+    "Jakarta — Soekarno-Hatta (CGK)":                  "CGK",
+    "Johannesburg — O.R. Tambo (JNB)":                 "JNB",
+    "Kuala Lumpur — KL International (KUL)":           "KUL",
+    "Las Vegas, NV — Harry Reid (LAS)":                "LAS",
+    "Lisbon — Humberto Delgado (LIS)":                 "LIS",
+    "London — Heathrow (LHR)":                         "LHR",
+    "London — Gatwick (LGW)":                          "LGW",
+    "Los Angeles, CA — LAX (LAX)":                     "LAX",
+    "Madrid — Adolfo Suárez Barajas (MAD)":            "MAD",
+    "Melbourne — Tullamarine (MEL)":                   "MEL",
+    "Mexico City — Benito Juárez (MEX)":               "MEX",
+    "Miami, FL — Miami International (MIA)":           "MIA",
+    "Milan — Malpensa (MXP)":                          "MXP",
+    "Minneapolis, MN — MSP (MSP)":                     "MSP",
+    "Montreal — Trudeau (YUL)":                        "YUL",
+    "Mumbai — Chhatrapati Shivaji (BOM)":              "BOM",
+    "Munich — Franz Josef Strauss (MUC)":              "MUC",
+    "Nairobi — Jomo Kenyatta (NBO)":                   "NBO",
+    "New York, NY — JFK (JFK)":                        "JFK",
+    "New York, NY — Newark (EWR)":                     "EWR",
+    "New York, NY — LaGuardia (LGA)":                  "LGA",
+    "Orlando, FL — Orlando International (MCO)":       "MCO",
+    "Paris — Charles de Gaulle (CDG)":                 "CDG",
+    "Paris — Orly (ORY)":                              "ORY",
+    "Philadelphia, PA — PHL (PHL)":                    "PHL",
+    "Phoenix, AZ — Sky Harbor (PHX)":                  "PHX",
+    "Rome — Leonardo da Vinci (FCO)":                  "FCO",
+    "San Francisco, CA — SFO (SFO)":                   "SFO",
+    "San Jose, CA — Mineta (SJC)":                     "SJC",
+    "Santiago — Comodoro Arturo Merino (SCL)":         "SCL",
+    "São Paulo — Guarulhos (GRU)":                     "GRU",
+    "Seattle, WA — Sea-Tac (SEA)":                     "SEA",
+    "Seoul — Incheon (ICN)":                           "ICN",
+    "Shanghai — Pudong (PVG)":                         "PVG",
+    "Singapore — Changi (SIN)":                        "SIN",
+    "Sydney — Kingsford Smith (SYD)":                  "SYD",
+    "Tokyo — Narita (NRT)":                            "NRT",
+    "Tokyo — Haneda (HND)":                            "HND",
+    "Toronto — Pearson (YYZ)":                         "YYZ",
+    "Vancouver — YVR (YVR)":                           "YVR",
+    "Vienna — Vienna International (VIE)":             "VIE",
+    "Warsaw — Chopin (WAW)":                           "WAW",
+    "Washington DC — Dulles (IAD)":                    "IAD",
+    "Washington DC — Reagan (DCA)":                    "DCA",
+    "Zurich — Zurich Airport (ZRH)":                   "ZRH",
+}
+AIRPORT_LABELS = list(AIRPORTS.keys())
 
 # ─────────────────────────────────────────────
 #  PROGRAM CATALOGUE
@@ -122,6 +181,7 @@ PROGRAMS = {
     },
 }
 ALL_PROGRAMS = {n: d for cat in PROGRAMS.values() for n, d in cat.items()}
+ALL_STATUSES = sorted({s for p in ALL_PROGRAMS.values() for s in p["statuses"]})
 
 def get_cat(name):
     for cat, progs in PROGRAMS.items():
@@ -129,11 +189,10 @@ def get_cat(name):
     return None
 
 # ─────────────────────────────────────────────
-#  SESSION STATE INIT
+#  SESSION STATE
 # ─────────────────────────────────────────────
-if "profile"  not in st.session_state: st.session_state.profile  = {}
-if "editing"  not in st.session_state: st.session_state.editing  = None
-if "page"     not in st.session_state: st.session_state.page     = "profile"
+if "profile" not in st.session_state: st.session_state.profile = {}
+if "page"    not in st.session_state: st.session_state.page    = "profile"
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
@@ -152,186 +211,145 @@ MOCK = {
     "perks": ["Lie-flat bed", "Premium dining", "Airport lounge access", "5th hotel night free", "No fuel surcharges"],
     "booking_steps": [
         {"title": "Create a free Aeroplan account", "desc": "Go to aeroplan.com and sign up — takes 2 minutes."},
-        {"title": "Move your Chase points to Aeroplan", "desc": "Transfer 60,000 Chase UR to Aeroplan (instant). Then search ANA Business SFO → NRT on June 10."},
-        {"title": "Move your Amex points to Marriott", "desc": "Transfer 80,000 Amex MR to Bonvoy — you receive ~96,000 pts thanks to the 20% bonus. Search Bonvoy for Tokyo Ginza hotels."},
-        {"title": "Book 5 nights to get the free night", "desc": "Book 5 consecutive award nights and Bonvoy makes the 5th free automatically."},
+        {"title": "Move your Chase points to Aeroplan", "desc": "Transfer 60,000 Chase UR to Aeroplan (instant). Search ANA Business SFO → NRT on June 10."},
+        {"title": "Move your Amex points to Marriott", "desc": "Transfer 80,000 Amex MR to Bonvoy — you get ~96,000 pts thanks to the 20% bonus. Search Bonvoy for Tokyo Ginza hotels."},
+        {"title": "Book 5 nights to get the free night", "desc": "Book 5 consecutive award nights — Bonvoy makes the 5th free automatically."},
     ],
     "alternatives": [
         {"name": "United MileagePlus (simpler)", "desc": "Transfer Chase UR to United directly — easier but costs ~80,000 miles.", "trade": "Burns 20,000 more points for the same seat"},
-        {"name": "Amex → ANA Mileage Club", "desc": "Transfer Amex directly to ANA at 1:1. Round-trip Business ~88,000 miles.", "trade": "Limited award space on own metal"},
+        {"name": "Amex → ANA Mileage Club", "desc": "Transfer Amex MR directly to ANA at 1:1. Round-trip Business ~88,000 miles.", "trade": "Limited award space on own metal"},
     ],
-    "card": {"name": "Marriott Bonvoy Brilliant (Amex)", "bonus": "185,000 bonus points — covers 2–3 nights at the St. Regis Tokyo", "why": "Closes the hotel gap. Comes with Gold status, a $300 dining credit, and Priority Pass lounge access at SFO."},
+    "card": {"name": "Marriott Bonvoy Brilliant (Amex)", "bonus": "185,000 bonus points — covers 2–3 nights at the St. Regis Tokyo", "why": "Closes the hotel gap. Comes with Gold status, $300 dining credit, and Priority Pass lounge access at SFO."},
     "confidence": "High for flight · Medium for hotel (book early)",
     "status": {"airline": "No elite status — ANA Business includes lounge access at NRT on arrival.", "hotel": "Standard room assignment. The Bonvoy Brilliant card grants automatic Gold status."},
 }
 
-# ─────────────────────────────────────────────
-#  HELPERS
-# ─────────────────────────────────────────────
-def pill(status):
-    is_active = status not in ["None", "Standard"]
-    bg  = "#e6f4ea" if is_active else "#f0f0f0"
-    col = "#1e5c2a" if is_active else "#666"
-    return (f'<span style="display:inline-block;padding:2px 10px;border-radius:20px;'
-            f'font-size:11px;font-weight:500;background:{bg};color:{col};">{status}</span>')
-
-def row_html(color, name, balance, status):
-    return (
-        f'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;">'
-        f'<span style="width:9px;height:9px;border-radius:50%;background:{color};'
-        f'flex-shrink:0;display:inline-block;"></span>'
-        f'<span style="font-size:13px;font-weight:600;color:#111;flex:2;min-width:0;">{name}</span>'
-        f'<span style="font-size:13px;color:#333;flex:1;white-space:nowrap;">{balance:,} pts</span>'
-        f'{pill(status)}'
-        f'</div>'
-    )
 
 # ─────────────────────────────────────────────
-#  PAGE: MY PROFILE
+#  PAGE: MY PROFILE  (uses st.data_editor)
 # ─────────────────────────────────────────────
 def page_profile():
     st.markdown("## My Loyalty Profile")
-    st.caption("Set up once — reused for every trip.")
+    st.caption("Edit any cell directly in the table. Use the checkbox column to select rows for deletion.")
 
     profile = st.session_state.profile
 
-    if not profile:
-        st.info("No programs added yet. Use the form below to get started.")
+    # ── Data editor ──
+    if profile:
+        # Build dataframe from profile
+        rows = []
+        for prog_name, entry in profile.items():
+            cat = get_cat(prog_name)
+            rows.append({
+                "Category":    cat,
+                "Program":     prog_name,
+                "Balance":     entry["balance"],
+                "Status":      entry["status"],
+            })
+        df = pd.DataFrame(rows)
+
+        # Build per-row status options (each program has different valid statuses)
+        # We use a single SelectboxColumn with all statuses — validation happens on save
+        edited = st.data_editor(
+            df,
+            use_container_width=True,
+            num_rows="dynamic",          # allows row deletion via checkbox
+            hide_index=True,
+            column_config={
+                "Category": st.column_config.TextColumn(
+                    "Category", disabled=True, width="small"),
+                "Program": st.column_config.SelectboxColumn(
+                    "Program",
+                    options=list(ALL_PROGRAMS.keys()),
+                    required=True,
+                    width="medium"),
+                "Balance": st.column_config.NumberColumn(
+                    "Balance (pts)",
+                    min_value=0,
+                    step=1000,
+                    format="%d",
+                    width="small"),
+                "Status": st.column_config.SelectboxColumn(
+                    "Status",
+                    options=ALL_STATUSES,
+                    width="medium"),
+            },
+            key="profile_editor",
+        )
+
+        # Sync edits back to session state on any change
+        if edited is not None:
+            new_profile = {}
+            for _, row in edited.iterrows():
+                prog  = row["Program"]
+                bal   = int(row["Balance"]) if pd.notna(row["Balance"]) else 0
+                stat  = row["Status"] if pd.notna(row["Status"]) else "None"
+                cat   = get_cat(prog)
+                # Validate status is legal for this program
+                if cat and prog in ALL_PROGRAMS:
+                    valid = ALL_PROGRAMS[prog]["statuses"]
+                    if stat not in valid:
+                        stat = valid[0]
+                new_profile[prog] = {"balance": bal, "status": stat}
+            st.session_state.profile = new_profile
+
+        if len(edited) == 0:
+            st.session_state.profile = {}
+
     else:
-        for cat_name, cat_progs in PROGRAMS.items():
-            cat_entries = {k: v for k, v in profile.items() if k in cat_progs}
-            if not cat_entries:
-                continue
+        st.info("No programs added yet. Use the form below to add your first program.")
 
-            st.markdown(f"**{cat_name}**")
-
-            # Column header
-            h_info, h_edit, h_del = st.columns([7, 1, 1])
-            with h_info:
-                st.markdown(
-                    '<div style="display:flex;gap:10px;padding:0 0 4px;">'
-                    '<div style="width:9px;flex-shrink:0;"></div>'
-                    '<span class="col-hdr" style="flex:2;">Program</span>'
-                    '<span class="col-hdr" style="flex:1;">Balance</span>'
-                    '<span class="col-hdr" style="flex:1;">Status</span>'
-                    '</div>',
-                    unsafe_allow_html=True)
-            st.markdown("<div style='border-top:1px solid #e8e8e8;margin-bottom:0;'></div>",
-                        unsafe_allow_html=True)
-
-            for prog_name, entry in cat_entries.items():
-                pdata  = ALL_PROGRAMS[prog_name]
-                color  = pdata["color"]
-                status = entry["status"]
-                bal    = entry["balance"]
-
-                if st.session_state.editing == prog_name:
-                    # ── Inline edit form ──
-                    with st.container():
-                        st.markdown(
-                            f'<div style="background:#f0f6ff;border:1px solid #c5d8f7;'
-                            f'border-radius:8px;padding:6px 10px;margin:4px 0 2px;">'
-                            f'<span style="font-size:12px;color:#1a56cc;font-weight:500;">'
-                            f'Editing — {prog_name}</span></div>',
-                            unsafe_allow_html=True)
-                        e1, e2, e3, e4 = st.columns([2, 2, 1, 1])
-                        with e1:
-                            new_bal = st.number_input(
-                                "Balance", min_value=0, step=1000, value=bal,
-                                key=f"ebal_{prog_name}", label_visibility="collapsed")
-                        with e2:
-                            idx = pdata["statuses"].index(status) \
-                                if status in pdata["statuses"] else 0
-                            new_status = st.selectbox(
-                                "Status", pdata["statuses"], index=idx,
-                                key=f"estat_{prog_name}", label_visibility="collapsed")
-                        with e3:
-                            if st.button("Save", key=f"save_{prog_name}",
-                                         use_container_width=True, type="primary"):
-                                st.session_state.profile[prog_name] = {
-                                    "balance": new_bal, "status": new_status}
-                                st.session_state.editing = None
-                                st.rerun()
-                        with e4:
-                            if st.button("Cancel", key=f"cancel_{prog_name}",
-                                         use_container_width=True):
-                                st.session_state.editing = None
-                                st.rerun()
-                else:
-                    # ── View row: info HTML in wide col, icon buttons in two narrow cols ──
-                    r_info, r_edit, r_del = st.columns([7, 1, 1])
-                    with r_info:
-                        st.markdown(
-                            row_html(color, prog_name, bal, status)
-                            + '<div style="border-top:1px solid #f0f0f0;margin:0;"></div>',
-                            unsafe_allow_html=True)
-                    with r_edit:
-                        # Vertical spacer so button aligns with row centre
-                        st.markdown("<div style='padding-top:6px;'>", unsafe_allow_html=True)
-                        if st.button("✎", key=f"edit_{prog_name}",
-                                     help=f"Edit {prog_name}",
-                                     use_container_width=True):
-                            st.session_state.editing = prog_name
-                            st.rerun()
-                        st.markdown("</div>", unsafe_allow_html=True)
-                    with r_del:
-                        st.markdown("<div style='padding-top:6px;'>", unsafe_allow_html=True)
-                        if st.button("✕", key=f"del_{prog_name}",
-                                     help=f"Remove {prog_name}",
-                                     use_container_width=True):
-                            del st.session_state.profile[prog_name]
-                            if st.session_state.editing == prog_name:
-                                st.session_state.editing = None
-                            st.rerun()
-                        st.markdown("</div>", unsafe_allow_html=True)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Add program ──
+    # ── Add program form ──
     st.markdown("---")
     st.markdown("**Add a program**")
-    st.markdown(
-        '<div style="display:flex;gap:0;">'
-        '<span class="col-hdr" style="flex:1.4;">Category</span>'
-        '<span class="col-hdr" style="flex:1.8;">Program</span>'
-        '<span class="col-hdr" style="flex:1.2;">Balance (pts)</span>'
-        '<span class="col-hdr" style="flex:1.8;">Status</span>'
-        '</div>',
-        unsafe_allow_html=True)
 
     ac1, ac2, ac3, ac4, ac5 = st.columns([1.4, 1.8, 1.2, 1.8, 0.7])
     with ac1:
-        add_cat = st.selectbox("Cat", list(PROGRAMS.keys()),
-                               key="add_cat", label_visibility="collapsed")
-    available = [p for p in PROGRAMS[add_cat] if p not in profile]
+        add_cat = st.selectbox("Category", list(PROGRAMS.keys()),
+                               key="add_cat", label_visibility="visible")
+    already_added = set(profile.keys())
+    available = [p for p in PROGRAMS[add_cat] if p not in already_added]
     with ac2:
         if available:
-            add_prog = st.selectbox("Prog", available,
-                                    key="add_prog", label_visibility="collapsed")
+            add_prog = st.selectbox("Program", available,
+                                    key="add_prog", label_visibility="visible")
         else:
-            st.selectbox("Prog", ["— all added —"], disabled=True,
-                         key="add_prog_dis", label_visibility="collapsed")
+            st.selectbox("Program", ["— all added —"], disabled=True,
+                         key="add_prog_dis", label_visibility="visible")
             add_prog = None
     with ac3:
-        add_bal = st.number_input("Bal", min_value=0, step=1000, value=0,
-                                  key="add_bal", label_visibility="collapsed")
+        add_bal = st.number_input("Balance", min_value=0, step=1000, value=0,
+                                  key="add_bal", label_visibility="visible")
     with ac4:
         if add_prog:
             add_status = st.selectbox(
-                "Stat", PROGRAMS[add_cat][add_prog]["statuses"],
-                key="add_status", label_visibility="collapsed")
+                "Status", PROGRAMS[add_cat][add_prog]["statuses"],
+                key="add_status", label_visibility="visible")
         else:
-            st.selectbox("Stat", ["—"], disabled=True,
-                         key="add_status_dis", label_visibility="collapsed")
+            st.selectbox("Status", ["—"], disabled=True,
+                         key="add_status_dis", label_visibility="visible")
             add_status = None
     with ac5:
-        st.markdown("<div style='padding-top:4px;'>", unsafe_allow_html=True)
+        st.markdown("<div style='padding-top:28px;'>", unsafe_allow_html=True)
         if st.button("Add", use_container_width=True, type="primary",
                      disabled=not add_prog, key="add_btn"):
             st.session_state.profile[add_prog] = {
                 "balance": add_bal, "status": add_status}
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
+
+    # Summary
+    if profile:
+        total = sum(e["balance"] for e in profile.values())
+        elite = sum(1 for e in profile.values() if e["status"] not in ["None", "Standard"])
+        st.markdown(
+            f'<div style="margin-top:1rem;padding:.75rem 1rem;background:#f7f7f7;'
+            f'border-radius:8px;font-size:13px;color:#555;">'
+            f'<b>{len(profile)}</b> programs &nbsp;·&nbsp; '
+            f'<b>{total:,}</b> total points &nbsp;·&nbsp; '
+            f'<b>{elite}</b> elite status(es) active'
+            f'</div>',
+            unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
@@ -351,39 +369,62 @@ def page_trip():
             st.caption("Sample data — no API key needed.")
         st.divider()
 
+        st.markdown("### Where are you flying?")
+
+        # Origin — searchable selectbox
+        origin_label = st.selectbox(
+            "Flying from",
+            AIRPORT_LABELS,
+            index=AIRPORT_LABELS.index("San Francisco, CA — SFO (SFO)"),
+            key="origin_sel")
+        origin_code = AIRPORTS[origin_label]
+        origin_city = origin_label.split(" —")[0]
+        st.caption(f"Airport code: **{origin_code}**")
+
+        # Destination — searchable selectbox
+        dest_label = st.selectbox(
+            "Flying to",
+            AIRPORT_LABELS,
+            index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
+            key="dest_sel")
+        dest_code = AIRPORTS[dest_label]
+        dest_city = dest_label.split(" —")[0]
+        st.caption(f"Airport code: **{dest_code}**")
+
+        st.divider()
         st.markdown("### Trip details")
-        origin      = st.text_input("From (city)",   value="San Francisco")
-        origin_code = st.text_input("Airport code",  value="SFO", max_chars=4).upper()
-        destination = st.text_input("To (city)",     value="Tokyo")
-        dest_code   = st.text_input("Airport code ", value="NRT", max_chars=4).upper()
         dates       = st.text_input("Travel dates",  value="June 10–20, 2026")
         nights      = st.number_input("Nights", min_value=1, max_value=30, value=5)
-        cabin       = st.selectbox("Cabin",
-                                   ["economy", "premium economy", "business", "first"])
-        hotel_style = st.selectbox("Hotel style", ["budget", "standard", "luxury"])
-        val_exp     = st.slider("Value ← → Experience", 1, 10, 5)
+        cabin       = st.selectbox("Cabin class",
+                                   ["Economy", "Premium Economy", "Business", "First"])
+        hotel_style = st.selectbox("Hotel style", ["Budget", "Standard", "Luxury"])
+        val_exp     = st.slider("Priority", 1, 10, 5,
+                                help="1 = maximize points value  ·  10 = maximize experience quality")
+        st.caption("Value ← · → Experience")
         st.divider()
         run = st.button("Find My Best Trip", type="primary", use_container_width=True)
 
-    # ── Main ──
+    # ── Main panel ──
     st.markdown("## Plan a Trip")
 
     if not profile:
-        st.warning("Your loyalty profile is empty — go to **My Profile** first.")
+        st.warning("Your loyalty profile is empty. Go to **My Profile** and add your programs first.")
         return
 
+    # Profile summary strip
+    total_pts = sum(e["balance"] for e in profile.values())
+    elite_ct  = sum(1 for e in profile.values() if e["status"] not in ["None", "Standard"])
     m1, m2, m3 = st.columns(3)
-    m1.metric("Programs",     len(profile))
-    m2.metric("Total points", f"{sum(e['balance'] for e in profile.values()):,}")
-    m3.metric("Elite statuses",
-              sum(1 for e in profile.values() if e["status"] not in ["None","Standard"]))
+    m1.metric("Programs loaded",  len(profile))
+    m2.metric("Total points",     f"{total_pts:,}")
+    m3.metric("Elite statuses",   elite_ct)
     st.markdown("---")
 
     if not run:
-        st.info("Enter your trip details in the sidebar and click **Find My Best Trip**.")
+        st.info("Select your origin, destination, and trip details in the sidebar, then click **Find My Best Trip**.")
         return
 
-    # ── Build payload ──
+    # ── Build API payload ──
     def build_data():
         cc, al, ht, ast, hst = {}, {}, {}, {}, {}
         for pn, entry in profile.items():
@@ -398,11 +439,17 @@ def page_trip():
         return {
             "points":      {"credit_cards": cc, "airline_miles": al, "hotel_points": ht},
             "status":      {"airlines": ast, "hotels": hst},
-            "trip":        {"origin": f"{origin} ({origin_code})",
-                            "destination": f"{destination} ({dest_code})",
-                            "dates": dates, "nights": int(nights)},
-            "preferences": {"cabin": cabin, "hotel_style": hotel_style,
-                            "value_vs_experience": val_exp},
+            "trip":        {
+                "origin":      f"{origin_city} ({origin_code})",
+                "destination": f"{dest_city} ({dest_code})",
+                "dates":       dates,
+                "nights":      int(nights),
+            },
+            "preferences": {
+                "cabin":               cabin,
+                "hotel_style":         hotel_style,
+                "value_vs_experience": val_exp,
+            },
         }
 
     SYSTEM = ("You are an expert travel strategist. "
@@ -416,22 +463,24 @@ USER PROFILE & TRIP:
 
 Return EXACTLY this JSON:
 {{
-  "plain_english": "One friendly sentence summarising the strategy",
-  "route_display": {{"origin": "{origin}", "destination": "{destination}"}},
-  "hero": {{"flight_pts": "e.g. 60,000 Chase pts",
-            "hotel_nights": "e.g. 4 nights paid, 5th free",
-            "cash": "e.g. ~$150"}},
+  "plain_english": "One friendly sentence — no jargon",
+  "route_display": {{"origin": "{origin_city}", "destination": "{dest_city}"}},
+  "hero": {{
+    "flight_pts": "e.g. 60,000 Chase pts",
+    "hotel_nights": "e.g. 4 nights paid, 5th free",
+    "cash": "e.g. ~$150"
+  }},
   "points_bars": [{{"name":"","pct":80,"color":"#378ADD","label":"60k → flight"}}],
   "flight": {{"airline":"","book_via":"","points":"","cash_fees":""}},
   "hotel":  {{"name":"","book_via":"","points":"","fifth_night":"Free or N/A"}},
   "perks": ["plain-English perk"],
-  "booking_steps": [{{"title":"Action","desc":"Plain English explanation"}}],
+  "booking_steps": [{{"title":"Short action","desc":"Plain English step"}}],
   "alternatives": [{{"name":"","desc":"","trade":""}}],
   "card": {{"name":"","bonus":"","why":""}},
   "status": {{"airline":"","hotel":""}},
   "confidence": ""
 }}
-Use city names not airport codes. Keep it friendly. Do NOT assume real-time availability."""
+Use city names not airport codes. Be friendly. Do NOT assume real-time availability."""
 
     def call_claude(key, data):
         client = anthropic.Anthropic(api_key=key)
@@ -456,16 +505,15 @@ Use city names not airport codes. Keep it friendly. Do NOT assume real-time avai
             f'{r.get("plain_english","")}</div>',
             unsafe_allow_html=True)
 
-        rd   = r.get("route_display", {})
-        hero = r.get("hero", {})
+        rd = r.get("route_display", {}); hero = r.get("hero", {})
         st.markdown(f"""
         <div class="hero"><div class="hero-top">
           <div class="route">
-            <span>{rd.get("origin", origin)}</span>
+            <span>{rd.get("origin", origin_city)}</span>
             <div class="route-line"></div>&rarr;<div class="route-line"></div>
-            <span>{rd.get("destination", destination)}</span>
+            <span>{rd.get("destination", dest_city)}</span>
           </div>
-          <p class="tagline">{dates} &middot; {cabin.title()} class &middot; {int(nights)} nights</p>
+          <p class="tagline">{dates} &middot; {cabin} class &middot; {int(nights)} nights</p>
         </div><div class="hero-bottom">
           <div class="hero-stat">
             <p class="hs-label">Flight</p>
@@ -494,14 +542,12 @@ Use city names not airport codes. Keep it friendly. Do NOT assume real-time avai
                 f'<span class="pts-amt">{b["label"]}</span></div>'
                 for b in bars)
             st.markdown(
-                f'<div class="pts-wrap"><p class="pts-title">Your points at a glance</p>'
-                f'{bh}'
+                f'<div class="pts-wrap"><p class="pts-title">Your points at a glance</p>{bh}'
                 f'<div class="legend">'
                 f'<span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>Flight</span>'
                 f'<span class="legend-item"><span class="legend-dot" style="background:#1D9E75;"></span>Hotel</span>'
                 f'<span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>Shortfall</span>'
-                f'</div></div>',
-                unsafe_allow_html=True)
+                f'</div></div>', unsafe_allow_html=True)
 
         f = r.get("flight", {}); h = r.get("hotel", {})
         c1, c2 = st.columns(2)
@@ -561,7 +607,7 @@ Use city names not airport codes. Keep it friendly. Do NOT assume real-time avai
 
         cc = r.get("card", {})
         if cc.get("name"):
-            bonus = (f'<p class="cc-bonus">{cc["bonus"]}</p>' if cc.get("bonus") else "")
+            bonus = f'<p class="cc-bonus">{cc["bonus"]}</p>' if cc.get("bonus") else ""
             st.markdown(
                 f'<div class="cc-wrap"><p class="cc-eye">Worth considering</p>'
                 f'<p class="cc-name">{cc["name"]}</p>{bonus}'
@@ -596,23 +642,17 @@ col_logo, col_nav = st.columns([3, 2])
 with col_logo:
     st.markdown("# AI Loyalty Optimizer")
 with col_nav:
-    st.markdown("<div style='padding-top:20px;'>", unsafe_allow_html=True)
     nb1, nb2 = st.columns(2)
     with nb1:
-        if st.button(
-            "My Profile", key="nav_profile", use_container_width=True,
-            type="primary" if st.session_state.page == "profile" else "secondary"
-        ):
+        if st.button("My Profile", key="nav_profile", use_container_width=True,
+                     type="primary" if st.session_state.page == "profile" else "secondary"):
             st.session_state.page = "profile"
             st.rerun()
     with nb2:
-        if st.button(
-            "Plan a Trip", key="nav_trip", use_container_width=True,
-            type="primary" if st.session_state.page == "trip" else "secondary"
-        ):
+        if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
+                     type="primary" if st.session_state.page == "trip" else "secondary"):
             st.session_state.page = "trip"
             st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown(
     "<hr style='margin:.25rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
