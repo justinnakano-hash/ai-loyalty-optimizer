@@ -10,7 +10,8 @@ from metadata_refresh import load_metadata, is_stale, refresh_metadata, save_met
 def get_metadata():
     return load_metadata()
 
-META = get_metadata()
+# META is loaded at render time via get_metadata() — not at module level
+# This ensures st.cache_data.clear() + st.rerun() picks up fresh data.
 
 st.set_page_config(
     page_title="AI Loyalty Optimizer",
@@ -428,7 +429,7 @@ def page_trip():
         st.divider()
 
         # ── Metadata status ──
-        gen_at = META.get("generated_at", "not yet generated")
+        gen_at = get_metadata().get("generated_at", "not yet generated")
         if gen_at == "not-yet-refreshed":
             st.warning("Market data not loaded. Run `python metadata_refresh.py` once to populate.")
         else:
@@ -439,7 +440,7 @@ def page_trip():
                         try:
                             data = refresh_metadata()
                             save_metadata(data)
-                            st.cache_data.clear()
+                            get_metadata.clear()   # clear specific cache, not all
                             st.rerun()
                         except Exception as e:
                             st.error(f"Refresh failed: {e}")
@@ -643,11 +644,11 @@ def page_trip():
         scope_str = " and ".join(scope)
 
         # Pull relevant metadata to inject — keeps prompt focused
-        cpp_data    = json.dumps(META.get("point_valuations", {}),  indent=2)
-        xfr_data    = json.dumps(META.get("transfer_partners", {}), indent=2)
-        promos      = json.dumps(META.get("promotions", []),         indent=2)
-        benchmarks  = json.dumps(META.get("cash_rate_benchmarks", {}), indent=2)
-        thresholds  = json.dumps(META.get("cpp_thresholds", {}),    indent=2)
+        cpp_data    = json.dumps(get_metadata().get("point_valuations", {}),  indent=2)
+        xfr_data    = json.dumps(get_metadata().get("transfer_partners", {}), indent=2)
+        promos      = json.dumps(get_metadata().get("promotions", []),         indent=2)
+        benchmarks  = json.dumps(get_metadata().get("cash_rate_benchmarks", {}), indent=2)
+        thresholds  = json.dumps(get_metadata().get("cpp_thresholds", {}),    indent=2)
 
         return f"""Generate the optimal {scope_str} loyalty strategy. Use the metadata below to calculate
 exact cent-per-point values, identify transfer paths, flag promotions, and decide if cash beats points.
@@ -1091,7 +1092,7 @@ Use the metadata CPP values and thresholds to make the cash vs points recommenda
                     unsafe_allow_html=True)
 
         # ── Metadata freshness note ──
-        gen_at = META.get("generated_at","unknown")
+        gen_at = get_metadata().get("generated_at","unknown")
         st.caption(f"Market data refreshed: {gen_at[:10] if len(gen_at) > 9 else gen_at}")
 
     # ── Execute ──
@@ -1225,10 +1226,10 @@ def page_admin():
     # ── Section 3: Metadata refresh ──
     st.markdown("### Market data refresh")
 
-    gen_at    = META.get("generated_at", "never")
+    gen_at    = get_metadata().get("generated_at", "never")
     stale     = is_stale()
     freshness = "Stale — older than 25 hours" if stale else "Fresh"
-    cost      = META.get("refresh_cost_usd", "unknown")
+    cost      = get_metadata().get("refresh_cost_usd", "unknown")
 
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
@@ -1256,17 +1257,22 @@ def page_admin():
             with st.spinner("Calling Claude to refresh market data… (~30 seconds)"):
                 try:
                     import os
-                    # Use master key from secrets for the refresh
+                    # Temporarily set the env var so metadata_refresh.py picks it up
                     original_key = os.environ.get("ANTHROPIC_API_KEY")
                     os.environ["ANTHROPIC_API_KEY"] = master_key
                     data = refresh_metadata()
                     save_metadata(data)
                     if original_key:
                         os.environ["ANTHROPIC_API_KEY"] = original_key
-                    st.cache_data.clear()
+                    elif "ANTHROPIC_API_KEY" in os.environ:
+                        del os.environ["ANTHROPIC_API_KEY"]
+
+                    # Clear the cache so get_metadata() re-reads the new file
+                    get_metadata.clear()
+
                     st.success(
                         f"Refresh complete! "
-                        f"{len(data.get('promotions',''))} promotions loaded · "
+                        f"{len(data.get('promotions',[]))} promotions loaded · "
                         f"Cost: ${data.get('refresh_cost_usd','?')} · "
                         f"Commit metadata.json to your repo to persist."
                     )
@@ -1276,6 +1282,7 @@ def page_admin():
                         "promotions_found": len(data.get("promotions",[])),
                         "cost_usd":         data.get("refresh_cost_usd"),
                     })
+                    st.rerun()  # re-render the page so all META references update
                 except Exception as e:
                     st.error(f"Refresh failed: {e}")
 
@@ -1283,7 +1290,7 @@ def page_admin():
 
     # ── Section 4: Current metadata preview ──
     with st.expander("View current metadata.json"):
-        st.json(META)
+        st.json(get_metadata())
 
     # ── Section 5: Setup instructions ──
     with st.expander("Setup instructions"):
