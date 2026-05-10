@@ -22,50 +22,58 @@ st.set_page_config(
 # ─────────────────────────────────────────────
 #  VIEWPORT DETECTION
 # ─────────────────────────────────────────────
-# Uses a URL query param (?mobile=1) set by a tiny inline <script>.
-# The script runs on page load, checks window.innerWidth, and if ≤768
-# appends ?mobile=1 to the URL — triggering one Streamlit rerun.
-# After that rerun IS_MOBILE is True and stays True for the session.
-# No external library, no visible widget, no loading flash on desktop.
+# IS_MOBILE is set via a JS script that adds class="is-mobile" to <body>
+# when window.innerWidth <= 768. CSS uses body.is-mobile selectors.
+# This is injected unconditionally so it always fires in the browser.
+# IS_MOBILE (Python) stays False — layout switching is CSS-only.
+IS_MOBILE = False
 
-def _detect_viewport():
-    # Already detected this session
-    if "viewport_width" in st.session_state:
-        return st.session_state.viewport_width
+# ─────────────────────────────────────────────
+#  STYLES + JS MOBILE DETECTION
+# ─────────────────────────────────────────────
+# JS runs immediately in the browser and adds body.is-mobile when
+# window.innerWidth <= 768. All mobile layout rules use body.is-mobile
+# as the selector — no @media, no Python branching, fully reliable.
 
-    # Check if the JS probe set ?mobile=1
-    mobile_param = st.query_params.get("mobile", None)
-    if mobile_param is not None:
-        w = 390 if mobile_param == "1" else 1200
-        st.session_state.viewport_width = w
-        st.query_params.clear()   # clean URL
-        return w
-
-    # First render — inject the probe script, default to desktop
-    st.markdown("""
+st.markdown("""
 <script>
 (function() {
-    if (window.innerWidth <= 768) {
-        var url = new URL(window.location.href);
-        if (!url.searchParams.has('mobile')) {
-            url.searchParams.set('mobile', '1');
-            window.location.replace(url.toString());
+    function _applyMobile() {
+        if (window.innerWidth <= 768) {
+            document.body.classList.add('is-mobile');
+        } else {
+            document.body.classList.remove('is-mobile');
         }
     }
+    _applyMobile();
+    window.addEventListener('resize', _applyMobile);
 })();
 </script>
+<style>
+
+/* ── LAYOUT SHOW/HIDE ─────────────────────────────────────────── */
+/* Desktop-only: visible by default, hidden when body.is-mobile   */
+.desktop-only { display: block !important; }
+.mobile-only  { display: none  !important; }
+body.is-mobile .desktop-only { display: none  !important; }
+body.is-mobile .mobile-only  { display: block !important; }
+
+/* ── MOBILE GLOBAL ────────────────────────────────────────────── */
+body.is-mobile .stApp { background: #f5efe2 !important; }
+body.is-mobile section[data-testid="stSidebar"],
+body.is-mobile [data-testid="collapsedControl"],
+body.is-mobile button[data-testid="stSidebarCollapsedControl"] {
+    display: none !important;
+}
+body.is-mobile section.main > div.block-container,
+body.is-mobile [data-testid="stAppViewContainer"] > .main .block-container {
+    background: transparent !important;
+    padding: .75rem .75rem 2rem !important;
+    max-width: 100% !important;
+}
+body.is-mobile .mobile-hide-title h1 { display: none !important; }
+</style>
 """, unsafe_allow_html=True)
-    st.session_state.viewport_width = 1200
-    return 1200
-
-VIEWPORT_W = _detect_viewport()
-IS_MOBILE  = VIEWPORT_W <= 768
-
-# ─────────────────────────────────────────────
-#  STYLES
-# ─────────────────────────────────────────────
-# Desktop CSS (unchanged from original) is always loaded.
-# Mobile CSS is appended ONLY on mobile and overrides where needed.
 
 st.markdown("""
 <style>
@@ -137,316 +145,128 @@ st.markdown("""
 
 
 # ─────────────────────────────────────────────
-#  MOBILE-ONLY STYLES (mockup look)
+#  MOBILE COMPONENT STYLES — always injected
 # ─────────────────────────────────────────────
+# These are component-level styles (.m-card, .m-tabs, etc.) that are
+# harmless on desktop (unused classes) and needed on mobile.
+# Background/sidebar/layout rules live in the body.is-mobile block above.
 MOBILE_CSS = """
 <style>
-/* Page background — soft cream like the mockup */
-.stApp { background: #f5efe2 !important; }
-section.main > div.block-container,
-[data-testid="stAppViewContainer"] > .main .block-container {
-    background: transparent !important;
-    padding: .75rem .75rem 2rem !important;
-    max-width: 100% !important;
-}
-
-/* Hide the sidebar entirely on mobile — its controls are rendered inline */
-section[data-testid="stSidebar"] { display: none !important; }
-button[data-testid="stSidebarCollapsedControl"] { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
-
-/* Hide the big title — replaced by an in-card title */
-.mobile-hide-title h1 { display: none !important; }
-
-/* Card shell wrapping each "page" */
+/* Card shell */
 .m-card {
-    background: #fff;
-    border-radius: 18px;
-    padding: 1.1rem 1.1rem 1.25rem;
-    margin-bottom: 1rem;
+    background: #fff; border-radius: 18px;
+    padding: 1.1rem 1.1rem 1.25rem; margin-bottom: 1rem;
     box-shadow: 0 1px 2px rgba(0,0,0,.03);
 }
-.m-card-title {
-    font-size: 19px; font-weight: 600; color: #111;
-    margin: 0 0 .9rem;
-}
+.m-card-title { font-size: 19px; font-weight: 600; color: #111; margin: 0 0 .9rem; }
 
-/* Tab nav inside the card */
-.m-tabs {
-    display: flex; gap: 0;
-    border-bottom: 1px solid #e8e8e8;
-    margin-bottom: 1rem;
-}
-.m-tabs > div[data-testid="column"] { padding: 0 !important; }
-.m-tabs button[kind] {
-    background: transparent !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
-    border-radius: 0 !important;
-    color: #888 !important;
-    font-weight: 500 !important;
-    padding: .55rem .25rem !important;
-    box-shadow: none !important;
-    height: auto !important;
-    min-height: 0 !important;
+/* Tab nav */
+.m-tabs { display:flex; border-bottom:1px solid #e8e8e8; margin-bottom:1rem; }
+.m-tabs > div[data-testid="column"] { padding:0 !important; }
+.m-tabs button {
+    background:transparent !important; border:none !important;
+    border-bottom:2px solid transparent !important; border-radius:0 !important;
+    color:#888 !important; font-weight:500 !important;
+    padding:.55rem .25rem !important; box-shadow:none !important;
+    height:auto !important; min-height:0 !important;
 }
 .m-tabs button[kind="primary"] {
-    color: #111 !important;
-    border-bottom: 2px solid #111 !important;
-    font-weight: 600 !important;
+    color:#111 !important; border-bottom-color:#111 !important; font-weight:600 !important;
 }
-.m-tabs button:focus { box-shadow: none !important; }
 
-/* Section row — gray pill containing a label + value (Optimize for, Route, Dates, etc.) */
-.m-section {
-    background: #f5f3ec;
-    border-radius: 12px;
-    padding: .85rem 1rem;
-    margin-bottom: .75rem;
+/* Segmented buttons */
+.m-seg button, .mf-seg button {
+    background:#fff !important; color:#111 !important;
+    border:1px solid #e8e8e8 !important; border-radius:10px !important;
+    font-size:12.5px !important; font-weight:500 !important;
+    min-height:42px !important; box-shadow:none !important; line-height:1.2 !important;
 }
-.m-section-head {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 13px; color: #111; font-weight: 600;
-    margin-bottom: 0;
+.m-seg button[kind="primary"], .mf-seg button[kind="primary"] {
+    background:#111 !important; color:#fff !important;
+    border-color:#111 !important; font-weight:600 !important;
 }
-.m-section-head .m-section-sub {
-    font-weight: 400; color: #666; font-size: 12px;
-}
-.m-section.has-body .m-section-head { margin-bottom: .65rem; }
-.m-section-body { background: #fff; border-radius: 8px; padding: .25rem .5rem; }
 
-/* Big black CTA */
+/* CTA button */
 div.m-cta button {
-    background: #111 !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 12px !important;
-    height: 52px !important;
-    font-size: 15px !important;
-    font-weight: 600 !important;
-    width: 100% !important;
-}
-div.m-cta button:hover { background: #2a2a2a !important; }
-
-/* Segmented button group (Flight+Hotel / Flight / Hotel  — and  Round trip / One way) */
-.m-seg button[kind] {
-    background: #fff !important;
-    color: #111 !important;
-    border: 1px solid #e8e8e8 !important;
-    border-radius: 10px !important;
-    font-size: 12.5px !important;
-    font-weight: 500 !important;
-    padding: .55rem .5rem !important;
-    min-height: 44px !important;
-    box-shadow: none !important;
-    line-height: 1.2 !important;
-}
-.m-seg button[kind="primary"] {
-    background: #111 !important;
-    color: #fff !important;
-    border-color: #111 !important;
-    font-weight: 600 !important;
+    background:#111 !important; color:#fff !important; border:none !important;
+    border-radius:12px !important; height:52px !important;
+    font-size:15px !important; font-weight:600 !important; width:100% !important;
 }
 
-/* Streamlit input cleanup inside cards */
-.m-card div[data-testid="stSelectbox"] > div > div,
-.m-card div[data-testid="stNumberInput"] > div > div,
-.m-card div[data-testid="stDateInput"] > div > div {
-    background: #fff !important;
-    border-color: #e0e0e0 !important;
-    border-radius: 8px !important;
-    min-height: 38px !important;
-}
-.m-card .stCaption, .m-card label[data-testid="stWidgetLabel"] {
-    font-size: 11px !important;
-    color: #888 !important;
-}
-.m-card hr { display: none !important; }
+/* Profile rows */
+.m-profile-cat { font-size:10px; font-weight:700; color:#999;
+    text-transform:uppercase; letter-spacing:.06em; margin:.85rem 0 .25rem; }
+.m-profile-row { display:flex; align-items:center; gap:8px;
+    padding:9px 0; border-bottom:1px solid #f3f3f3; }
+.m-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.m-name { flex:1; font-size:14px; font-weight:600; color:#111; }
+.m-bal  { font-size:13px; color:#555; white-space:nowrap; }
+.m-pill { display:inline-block; padding:2px 10px; border-radius:20px;
+    font-size:11px; font-weight:500; white-space:nowrap; margin-left:4px; }
+.m-add-prog button { border:1px dashed #d0d0d0 !important; background:#faf9f4 !important;
+    color:#555 !important; border-radius:10px !important; height:44px !important;
+    font-size:13px !important; font-weight:500 !important; }
+.m-summary-bar { background:#f5f3ec; border-radius:10px; padding:.65rem .9rem;
+    font-size:12px; color:#666; margin-top:.85rem; }
 
-/* Compact select labels */
-.m-card .stSelectbox label, .m-card .stNumberInput label,
-.m-card .stDateInput label, .m-card .stRadio label {
-    font-size: 11px !important; color: #888 !important;
-    margin-bottom: 2px !important;
-}
+/* Result cards */
+.m-res-card { border:1px solid #e8e8e8; border-radius:14px;
+    padding:1rem 1.1rem; margin-bottom:.85rem; background:#fff; }
+.m-res-head { display:flex; justify-content:space-between; align-items:flex-start;
+    margin-bottom:.85rem; gap:10px; }
+.m-res-title { font-size:15px; font-weight:600; color:#111; line-height:1.3; }
+.m-pill-covered { display:inline-flex; align-items:center; gap:4px; padding:3px 12px;
+    border-radius:20px; font-size:11px; font-weight:500;
+    background:#e6f4ea; color:#1e5c2a; white-space:nowrap; }
+.m-pill-shortfall { display:inline-flex; align-items:center; gap:4px; padding:3px 12px;
+    border-radius:20px; font-size:11px; font-weight:500;
+    background:#fff3e0; color:#7a5700; white-space:nowrap; }
+.m-bar-row { margin-bottom:.85rem; }
+.m-bar-labels { display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px; }
+.m-bar-name { font-weight:500; color:#111; }
+.m-bar-need { color:#888; }
+.m-bar-track { height:8px; background:#f0f0f0; border-radius:5px; overflow:hidden; }
+.m-bar-fill  { height:100%; border-radius:5px; }
+.m-bar-foot  { text-align:right; font-size:11px; margin-top:4px; font-weight:500; }
+.m-cpp-row   { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:.85rem; }
+.m-cpp-chip  { border-radius:10px; padding:.55rem .4rem; text-align:center; line-height:1.25; }
+.m-cpp-chip.best   { background:#e6f4ea; color:#1e5c2a; }
+.m-cpp-chip.normal { background:#f5f3ec; color:#555; }
+.m-cpp-val { font-size:16px; font-weight:600; display:block; }
+.m-cpp-lbl  { font-size:11px; display:block; margin-top:1px; }
+.m-plain { background:#e6f4ea; border-radius:12px; padding:.85rem 1rem;
+    font-size:13.5px; color:#1e5c2a; line-height:1.55; margin-bottom:1rem; }
 
-/* Profile rows — tighter on mobile */
-.m-profile-cat {
-    font-size: 10px; font-weight: 700; color: #999;
-    text-transform: uppercase; letter-spacing: .06em;
-    margin: .85rem 0 .25rem;
-}
-.m-profile-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 9px 0;
-    border-bottom: 1px solid #f3f3f3;
-}
-.m-profile-row .m-dot {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-}
-.m-profile-row .m-name {
-    flex: 1; font-size: 14px; font-weight: 600; color: #111;
-}
-.m-profile-row .m-bal {
-    font-size: 13px; color: #555; white-space: nowrap;
-}
-.m-profile-row .m-pill {
-    display: inline-block; padding: 2px 10px;
-    border-radius: 20px; font-size: 11px; font-weight: 500;
-    white-space: nowrap; margin-left: 4px;
-}
-
-/* Add program row — match button height with inputs */
-.m-add-prog button {
-    border: 1px dashed #d0d0d0 !important;
-    background: #faf9f4 !important;
-    color: #555 !important;
-    border-radius: 10px !important;
-    height: 44px !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-}
-.m-summary-bar {
-    background: #f5f3ec;
-    border-radius: 10px;
-    padding: .65rem .9rem;
-    font-size: 12px; color: #666;
-    margin-top: .85rem;
-}
-
-/* Results — mockup-style "Covered" pills, tighter cards */
-.m-res-card {
-    border: 1px solid #e8e8e8; border-radius: 14px;
-    padding: 1rem 1.1rem; margin-bottom: .85rem;
-    background: #fff;
-}
-.m-res-head {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    margin-bottom: .85rem; gap: 10px;
-}
-.m-res-title { font-size: 15px; font-weight: 600; color: #111; line-height: 1.3; }
-.m-pill-covered {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 12px; border-radius: 20px;
-    font-size: 11px; font-weight: 500;
-    background: #e6f4ea; color: #1e5c2a;
-    white-space: nowrap;
-}
-.m-pill-shortfall {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 12px; border-radius: 20px;
-    font-size: 11px; font-weight: 500;
-    background: #fff3e0; color: #7a5700;
-    white-space: nowrap;
-}
-.m-bar-row { margin-bottom: .25rem; }
-.m-bar-labels {
-    display: flex; justify-content: space-between;
-    font-size: 12px; margin-bottom: 5px;
-}
-.m-bar-labels .m-bar-name { font-weight: 500; color: #111; }
-.m-bar-labels .m-bar-need { color: #888; }
-.m-bar-track {
-    height: 8px; background: #f0f0f0;
-    border-radius: 5px; position: relative; overflow: hidden;
-}
-.m-bar-fill { height: 100%; border-radius: 5px; }
-.m-bar-foot {
-    text-align: right; font-size: 11px; margin-top: 4px;
-    font-weight: 500;
-}
-
-/* CPP comparison chips (3 across) */
-.m-cpp-row {
-    display: grid; grid-template-columns: 1fr 1fr 1fr;
-    gap: 6px; margin-top: .85rem;
-}
-.m-cpp-chip {
-    border-radius: 10px; padding: .55rem .4rem;
-    text-align: center; line-height: 1.25;
-}
-.m-cpp-chip.best   { background: #e6f4ea; color: #1e5c2a; }
-.m-cpp-chip.normal { background: #f5f3ec; color: #555; }
-.m-cpp-val { font-size: 16px; font-weight: 600; display: block; }
-.m-cpp-lbl { font-size: 11px; display: block; margin-top: 1px; }
-
-/* Plain-english callout, tighter */
-.m-plain {
-    background: #e6f4ea; border-radius: 12px;
-    padding: .85rem 1rem; font-size: 13.5px;
-    color: #1e5c2a; line-height: 1.55; margin-bottom: 1rem;
-}
-
-/* Hide column hint labels and other desktop chrome on mobile */
-.m-hide-on-mobile { display: none !important; }
-
-/* ── Mobile trip form — matches screenshot layout ── */
-
-/* Section card: rounded gray container, label left + current value right */
-.mf-section {
-    background: #f5f3ec; border-radius: 14px;
-    padding: 0; margin-bottom: .65rem; overflow: hidden;
-}
-/* Header row inside a section */
-.mf-header {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: .85rem 1rem; font-size: 14px;
-}
-.mf-header-label { font-weight: 600; color: #111; }
-.mf-header-value { color: #666; font-size: 13px; font-weight: 400;
-    text-align: right; max-width: 55%;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* Body that expands inside a section */
-.mf-body {
-    padding: 0 .85rem .85rem;
-}
-
-/* Route sub-rows: From / To / Type inside the Route section */
-.mf-route-row {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: .55rem 0; border-top: 1px solid #eceae3;
-}
-.mf-route-lbl {
-    font-size: 13px; color: #888; width: 38px; flex-shrink: 0; padding-top: 6px;
-}
-.mf-route-val { flex: 1; }
-
-/* Hide Streamlit widget labels inside trip form sections */
+/* Trip form sections */
+.mf-section { background:#f5f3ec; border-radius:14px; margin-bottom:.65rem; overflow:hidden; }
+.mf-header { display:flex; justify-content:space-between; align-items:center;
+    padding:.85rem 1rem; font-size:14px; }
+.mf-header-label { font-weight:600; color:#111; }
+.mf-header-value { color:#666; font-size:13px; font-weight:400;
+    text-align:right; max-width:55%;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mf-body { padding:0 .85rem .85rem; }
+.mf-route-row { display:flex; align-items:flex-start; gap:10px;
+    padding:.55rem 0; border-top:1px solid #eceae3; }
+.mf-route-lbl { font-size:13px; color:#888; width:38px; flex-shrink:0; padding-top:6px; }
+.mf-route-val { flex:1; }
 .mf-body div[data-testid="stSelectbox"] label,
 .mf-body div[data-testid="stDateInput"] label,
-.mf-body div[data-testid="stNumberInput"] label { display: none !important; }
-
-/* Clean up selectbox chrome inside sections */
+.mf-body div[data-testid="stNumberInput"] label { display:none !important; }
 .mf-body div[data-testid="stSelectbox"] > div > div {
-    background: #fff !important; border-color: #e0e0e0 !important;
-    border-radius: 10px !important; font-size: 14px !important;
+    background:#fff !important; border-color:#e0e0e0 !important;
+    border-radius:10px !important; font-size:14px !important;
 }
 .mf-body div[data-testid="stDateInput"] > div > div {
-    background: #fff !important; border-color: #e0e0e0 !important;
-    border-radius: 10px !important;
+    background:#fff !important; border-color:#e0e0e0 !important;
+    border-radius:10px !important;
 }
-
-/* Seg buttons inside trip form */
-.mf-seg button {
-    background: #fff !important; color: #111 !important;
-    border: 1px solid #e8e8e8 !important; border-radius: 10px !important;
-    font-size: 13px !important; font-weight: 500 !important;
-    min-height: 42px !important; box-shadow: none !important;
-}
-.mf-seg button[kind="primary"] {
-    background: #111 !important; color: #fff !important;
-    border-color: #111 !important; font-weight: 600 !important;
-}
-
-/* Tighter slider */
-.mf-body div[data-testid="stSlider"] { padding: 0 .1rem !important; }
-.mf-body div[data-testid="stSlider"] label { display: none !important; }
+.mf-body div[data-testid="stSlider"] { padding:0 .1rem !important; }
+.mf-body div[data-testid="stSlider"] label { display:none !important; }
 </style>
 """
 
-if IS_MOBILE:
-    st.markdown(MOBILE_CSS, unsafe_allow_html=True)
+st.markdown(MOBILE_CSS, unsafe_allow_html=True)  # always inject — harmless on desktop
 
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
@@ -1011,10 +831,11 @@ def page_profile_mobile():
 
 
 def page_profile():
-    if IS_MOBILE:
-        page_profile_mobile()
-    else:
-        page_profile_desktop()
+    st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
+    page_profile_desktop()
+    st.markdown('</div><div class="mobile-only">', unsafe_allow_html=True)
+    page_profile_mobile()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  MOBILE HELPERS — tab nav inside cards
@@ -2306,10 +2127,11 @@ def page_trip_mobile():
 
 
 def page_trip():
-    if IS_MOBILE:
-        page_trip_mobile()
-    else:
-        page_trip_desktop()
+    st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
+    page_trip_desktop()
+    st.markdown('</div><div class="mobile-only">', unsafe_allow_html=True)
+    page_trip_mobile()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  PAGE: ADMIN
@@ -2334,17 +2156,10 @@ def page_admin():
     master_key = get_secret("admin", "api_key")
     secrets_configured = bool(admin_pw and master_key)
 
-    # On mobile, wrap everything in the card shell
-    if IS_MOBILE:
-        st.markdown('<div class="m-card">', unsafe_allow_html=True)
-        st.markdown('<p class="m-card-title">Admin</p>', unsafe_allow_html=True)
-        _render_mobile_tabs()
-
     # ── Login wall ──
     if not st.session_state.admin_authed:
-        if not IS_MOBILE:
-            st.markdown("## Admin")
-            st.markdown('<div style="max-width:360px;">', unsafe_allow_html=True)
+        st.markdown("## Admin")
+        st.markdown('<div style="max-width:360px;">', unsafe_allow_html=True)
 
         if not secrets_configured:
             st.error(
@@ -2353,37 +2168,25 @@ def page_admin():
                 "api_key  = \"sk-ant-...\"\n```\n\n"
                 "Go to: Streamlit Cloud → your app → Settings → Secrets"
             )
-            if IS_MOBILE: st.markdown('</div>', unsafe_allow_html=True)
             return
 
         pw_input = st.text_input("Admin password", type="password",
                                  placeholder="Enter password", key="admin_pw_input")
-        if st.button("Log in", type="primary", key="admin_login_btn",
-                     use_container_width=IS_MOBILE):
+        if st.button("Log in", type="primary", key="admin_login_btn"):
             if pw_input == admin_pw:
                 st.session_state.admin_authed = True
                 st.rerun()
             else:
                 st.error("Incorrect password.")
-
-        if not IS_MOBILE:
-            st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         return
 
     # ── Authenticated ──
-    if not IS_MOBILE:
-        col_title, col_logout = st.columns([4, 1])
-        with col_title:
-            st.markdown("## Admin Panel")
-        with col_logout:
-            if st.button("Log out", key="admin_logout"):
-                st.session_state.admin_authed = False
-                st.session_state.page = "profile"
-                st.rerun()
-    else:
-        if st.button("Log out", key="admin_logout", use_container_width=True):
+    col_title, col_logout = st.columns([4, 1])
+    with col_title:
+        st.markdown("## Admin Panel")
+    with col_logout:
+        if st.button("Log out", key="admin_logout"):
             st.session_state.admin_authed = False
             st.session_state.page = "profile"
             st.rerun()
@@ -2440,15 +2243,10 @@ def page_admin():
     freshness = "Stale — older than 25 hours" if stale else "Fresh"
     cost      = get_metadata().get("refresh_cost_usd", "unknown")
 
-    if IS_MOBILE:
-        st.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
-        st.metric("Status",         freshness)
-        st.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
-    else:
-        col_a, col_b, col_c = st.columns(3)
-        col_a.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
-        col_b.metric("Status",         freshness)
-        col_c.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
+    col_b.metric("Status",         freshness)
+    col_c.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
 
     st.markdown("**What gets refreshed:**")
     st.markdown(
@@ -2526,43 +2324,37 @@ Navigate here via the Admin nav button and enter your password.
 - The admin route is not hidden by URL — it's protected by password only
 """)
 
-    if IS_MOBILE:
-        st.markdown('</div>', unsafe_allow_html=True)  # /m-card
-
 # ─────────────────────────────────────────────
 #  NAV + ROUTER
 # ─────────────────────────────────────────────
 
-if IS_MOBILE:
-    # Hide the title on mobile (the card titles take over) — wrap so CSS rule applies
-    st.markdown('<div class="mobile-hide-title">', unsafe_allow_html=True)
-    st.markdown("# AI Loyalty Optimizer")
-    st.markdown('</div>', unsafe_allow_html=True)
-else:
-    # Desktop nav — unchanged from original
-    st.markdown("# AI Loyalty Optimizer")
+# Title: always rendered. CSS hides it on mobile (in-card titles take over).
+st.markdown('<div class="mobile-hide-title">', unsafe_allow_html=True)
+st.markdown("# AI Loyalty Optimizer")
+st.markdown('</div>', unsafe_allow_html=True)
 
-    nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
-    with nav_col1:
-        if st.button("My Profile", key="nav_profile", use_container_width=True,
-                     type="primary" if st.session_state.page == "profile" else "secondary"):
-            st.session_state.page = "profile"
-            st.rerun()
-    with nav_col2:
-        if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
-                     type="primary" if st.session_state.page == "trip" else "secondary"):
-            st.session_state.page = "trip"
-            st.rerun()
-    with nav_admin:
-        admin_label = "Admin"
-        if st.button(admin_label, key="nav_admin", use_container_width=True,
-                     type="primary" if st.session_state.page == "admin" else "secondary"):
-            st.session_state.page = "admin"
-            st.rerun()
-
-    st.markdown(
-        "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
-        unsafe_allow_html=True)
+# Desktop nav: always rendered, hidden on mobile via CSS.
+st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
+nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
+with nav_col1:
+    if st.button("My Profile", key="nav_profile", use_container_width=True,
+                 type="primary" if st.session_state.page == "profile" else "secondary"):
+        st.session_state.page = "profile"
+        st.rerun()
+with nav_col2:
+    if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
+                 type="primary" if st.session_state.page == "trip" else "secondary"):
+        st.session_state.page = "trip"
+        st.rerun()
+with nav_admin:
+    if st.button("Admin", key="nav_admin", use_container_width=True,
+                 type="primary" if st.session_state.page == "admin" else "secondary"):
+        st.session_state.page = "admin"
+        st.rerun()
+st.markdown(
+    "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
+    unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Route to the active page
 if st.session_state.page == "profile":
