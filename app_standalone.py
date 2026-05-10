@@ -151,14 +151,53 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
-/* Hide scope tile trigger buttons */
-div.st-tile-btn-hide {
-    position: absolute !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-    height: 0 !important;
-    overflow: hidden !important;
-    z-index: -1 !important;
+/* ── Scope tile icons — sit directly above the button below them.
+     CSS removes the gap and merges them into one rounded tile. ── */
+.tile-icon {
+    background: #fff;
+    border: 2px solid #e0e0e0;
+    border-bottom: none;
+    border-radius: 14px 14px 0 0;
+    padding: 18px 8px 10px;
+    margin: 0 0 -2px 0;     /* overlap with button border below */
+    text-align: center;
+    line-height: 1;
+    transition: background .12s, border-color .12s;
+}
+.tile-icon.active {
+    background: #111;
+    border-color: #111;
+}
+.tile-icon i {
+    line-height: 1;
+}
+
+/* Style the buttons that sit RIGHT BELOW a .tile-icon */
+.tile-icon + div[data-testid="stElementContainer"] button,
+.tile-icon + div button {
+    border-radius: 0 0 14px 14px !important;
+    border-top: none !important;
+    margin-top: 0 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    height: auto !important;
+    min-height: 36px !important;
+    padding: 6px 4px 12px !important;
+    line-height: 1.2 !important;
+}
+/* Active tile: button matches the black icon div above it */
+.tile-icon.active + div[data-testid="stElementContainer"] button,
+.tile-icon.active + div button {
+    background: #111 !important;
+    color: #fff !important;
+    border-color: #111 !important;
+}
+/* Inactive tile: button is white with gray border */
+.tile-icon:not(.active) + div[data-testid="stElementContainer"] button,
+.tile-icon:not(.active) + div button {
+    background: #fff !important;
+    color: #333 !important;
+    border-color: #e0e0e0 !important;
 }
 
 /* Seg button rows — force single row, never stack */
@@ -605,19 +644,6 @@ if "mock_override" not in st.session_state:
 # Mobile widget state
 if "m_search_scope" not in st.session_state: st.session_state.m_search_scope = "Flight + Hotel"
 if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "Round trip"
-
-# ─────────────────────────────────────────────
-#  HANDLE TILE-CLICK QUERY PARAMS (from iframe-based scope tiles)
-# ─────────────────────────────────────────────
-# When a user taps a tile, the iframe navigates parent to ?scope=fh/fl/ht.
-# Read the param, convert to session state, ensure we stay on the trip page.
-_qp_scope = st.query_params.get("scope")
-if _qp_scope in ["fh", "fl", "ht"]:
-    _scope_map = {"fh": "Flight + Hotel", "fl": "Flight", "ht": "Hotel"}
-    st.session_state["t_scope"] = _scope_map[_qp_scope]
-    st.session_state["page"]    = "trip"
-    st.query_params.clear()
-    st.rerun()
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
@@ -1704,69 +1730,47 @@ def page_trip():
 
     def scope_tiles():
         """
-        Renders 3 icon tiles inside an iframe via st.components.v1.html.
-        Tile clicks navigate the parent URL with ?scope=... — that's read at
-        module level and converted to session state before this runs.
+        Three icon tiles. Each tile = an icon div (st.markdown) + an st.button
+        below it in the same column. CSS merges them into one visual unit.
         """
+        # Load Tabler icons font (idempotent — only loads once per page)
+        st.markdown(
+            '<link rel="stylesheet" '
+            'href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">',
+            unsafe_allow_html=True)
+
         current = st.session_state.get("t_scope", "Flight + Hotel")
 
         TILES = [
-            ("Flight + Hotel", "fh",
-             '<div class="st-icons-dual"><i class="ti ti-plane-tilt"></i>'
-             '<i class="ti ti-building"></i></div>'),
-            ("Flight", "fl",
-             '<div class="st-icons"><i class="ti ti-plane-tilt"></i></div>'),
-            ("Hotel", "ht",
-             '<div class="st-icons"><i class="ti ti-building"></i></div>'),
+            ("Flight + Hotel", "tile_fh",
+             '<i class="ti ti-plane-tilt" style="font-size:22px;"></i>'
+             '<i class="ti ti-building" style="font-size:22px;"></i>'),
+            ("Flight", "tile_fl",
+             '<i class="ti ti-plane-tilt" style="font-size:30px;"></i>'),
+            ("Hotel", "tile_ht",
+             '<i class="ti ti-building" style="font-size:30px;"></i>'),
         ]
 
-        tiles_html = ""
-        for label, code, icon_html in TILES:
-            active_cls = " active" if label == current else ""
-            # Use <a target="_top"> so clicks navigate the parent Streamlit window
-            tiles_html += (
-                f'<a class="st-tile{active_cls}" '
-                f'href="?scope={code}" target="_top">'
-                f'{icon_html}'
-                f'<div class="st-label">{label}</div>'
-                f'</a>'
-            )
+        cols = st.columns(3)
+        for i, (label, key, icon_html) in enumerate(TILES):
+            with cols[i]:
+                is_active = label == current
+                # Color of icon depends on active state (white on black, gray on white)
+                ic_color = "#ffffff" if is_active else "#555555"
+                # Render the icon div above the button — CSS will merge them visually
+                st.markdown(
+                    f'<div class="tile-icon{" active" if is_active else ""}" '
+                    f'style="color:{ic_color};">'
+                    f'<div style="display:flex;gap:5px;align-items:center;justify-content:center;">'
+                    f'{icon_html}'
+                    f'</div></div>',
+                    unsafe_allow_html=True)
+                if st.button(label, key=key, use_container_width=True,
+                             type="primary" if is_active else "secondary"):
+                    st.session_state["t_scope"] = label
+                    st.rerun()
 
-        full_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<style>
-  html, body {{ margin:0; padding:0; background:transparent;
-                font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }}
-  .st-tiles {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }}
-  .st-tile {{ display:flex; flex-direction:column; align-items:center;
-              justify-content:center; gap:10px; padding:20px 6px 16px;
-              border-radius:14px; border:2px solid #e0e0e0; background:#fff;
-              cursor:pointer; user-select:none; text-decoration:none;
-              -webkit-tap-highlight-color:transparent;
-              transition:background .12s, border-color .12s, transform .08s; }}
-  .st-tile:hover {{ border-color:#999; }}
-  .st-tile:active {{ transform:scale(0.97); }}
-  .st-tile.active {{ background:#111; border-color:#111; }}
-  .st-tile i {{ font-size:30px; color:#555; line-height:1; }}
-  .st-tile.active i {{ color:#fff; }}
-  .st-icons-dual {{ display:flex; gap:5px; align-items:center; }}
-  .st-icons-dual i {{ font-size:22px; }}
-  .st-label {{ font-size:11.5px; font-weight:600; color:#333;
-               text-align:center; line-height:1.2; }}
-  .st-tile.active .st-label {{ color:#fff; font-weight:700; }}
-</style>
-</head>
-<body data-active="{current}">
-<div class="st-tiles">{tiles_html}</div>
-</body>
-</html>
-"""
-        st.components.v1.html(full_html, height=108, scrolling=False)
-
-        return current
+        return st.session_state.get("t_scope", "Flight + Hotel")
 
     def mf_open(label, value=""):
         val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
