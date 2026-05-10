@@ -381,6 +381,14 @@ if "editing"     not in st.session_state: st.session_state.editing     = None
 if "admin_authed" not in st.session_state: st.session_state.admin_authed = False
 if "mock_override" not in st.session_state: st.session_state.mock_override = None  # None | True | False
 
+# ── Handle nav query param FIRST — before any page renders ──
+# The hamburger menu posts ?nav=profile/trip/admin
+_nav_qp = st.query_params.get("nav", None)
+if _nav_qp in ("profile", "trip", "admin"):
+    st.session_state.page = _nav_qp
+    st.query_params.clear()
+    st.rerun()
+
 # ─────────────────────────────────────────────
 #  MOCK DATA
 # ─────────────────────────────────────────────
@@ -989,7 +997,6 @@ document.getElementById('f').onsubmit = function(e){{
             "cabin": cabin, "hotel_style": hotel_style,
             "hotel_nights_n": hotel_nights or 5, "val_exp": val_exp,
         })
-        st.query_params.clear()
         return dict(
             include_flight=include_flight, include_hotel=include_hotel,
             is_roundtrip=is_roundtrip, origin_city=origin_city, origin_code=origin_code,
@@ -1001,6 +1008,7 @@ document.getElementById('f').onsubmit = function(e){{
 
     if run:
         _v = _parse_qp(qp)
+        st.query_params.clear()  # clear only after successful parse
     else:
         # Use last persisted values or defaults
         _v = _parse_qp({
@@ -1241,14 +1249,6 @@ The session stays authenticated until you log out or close the browser.
 # ─────────────────────────────────────────────
 
 cur_page = st.session_state.get("page", "profile")
-
-# ── Handle nav selection from hamburger menu (query param) ──
-_nav_qp = st.query_params.get("nav", None)
-if _nav_qp in ("profile", "trip", "admin"):
-    st.session_state.page = _nav_qp
-    cur_page = _nav_qp
-    st.query_params.clear()
-    st.rerun()
 
 # ── Page label for header ──
 _page_labels = {"profile": "My Profile", "trip": "Plan a Trip", "admin": "Admin"}
