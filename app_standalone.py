@@ -16,73 +16,52 @@ def get_metadata():
 st.set_page_config(
     page_title="AI Loyalty Optimizer",
     page_icon="✈️",
-    layout="centered",
-    initial_sidebar_state="collapsed",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
 <style>
-/* ── Hide Streamlit toolbar chrome ── */
-#MainMenu { display: none !important; }
-header[data-testid="stHeader"] { display: none !important; }
-footer { display: none !important; }
-[data-testid="stToolbar"] { display: none !important; }
-[data-testid="stDecoration"] { display: none !important; }
-[data-testid="stStatusWidget"] { display: none !important; }
+/* ══ HIDE STREAMLIT CHROME ══ */
+#MainMenu,footer,[data-testid="stToolbar"],[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],header[data-testid="stHeader"] { display:none!important; }
 
-/* ── Base layout ── */
-.block-container { max-width:860px !important; padding-top:1rem !important; }
+/* ══ BASE ══ */
+.block-container { padding-top:.75rem!important; }
 
-/* ── Sidebar always hidden — inputs live in main panel ── */
-[data-testid="stSidebar"] { display:none !important; }
-[data-testid="collapsedControl"] { display:none !important; }
-@media (max-width:768px) {
-    .block-container { padding-left:1rem !important; padding-right:1rem !important; padding-top:0.75rem !important; }
-    h1 { font-size:1.4rem !important; }
-}
+/* ══ DESKTOP NAV TAB UNDERLINE STYLE ══ */
+.nav-tab-bar { display:flex; gap:0; border-bottom:1px solid #e8e8e8; margin-bottom:1rem; }
+.nav-tab { flex:0; padding:10px 20px; font-size:14px; font-weight:500; color:#888;
+           cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
+.nav-tab.active { color:#111; border-bottom-color:#111; }
 
-/* ── Result cards ── */
-.plain-english { background:#e6f4ea; border-radius:10px; padding:.9rem 1.1rem;
+/* ══ RESULT CARDS ══ */
+.plain-english { background:#f0faf0; border-radius:10px; padding:.9rem 1.1rem;
     font-size:14px; color:#1e5c2a; line-height:1.65; margin-bottom:1rem; }
 .hero { border:1px solid #e8e8e8; border-radius:12px; overflow:hidden; margin-bottom:1rem; }
 .hero-top { padding:1rem 1.25rem; }
-.route { font-size:18px; font-weight:600; color:#111;
-    display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap; }
-.route-line { flex:1; min-width:20px; height:1px; background:#ddd; }
+.route { font-size:17px; font-weight:600; color:#111; display:flex;
+    align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap; }
+.route-line { flex:1; min-width:16px; height:1px; background:#ddd; }
 .tagline { font-size:13px; color:#666; }
 .hero-bottom { display:grid; grid-template-columns:1fr 1fr 1fr; border-top:1px solid #e8e8e8; }
-.hero-stat { padding:.85rem 1.1rem; border-right:1px solid #e8e8e8; }
+.hero-stat { padding:.8rem 1rem; border-right:1px solid #e8e8e8; }
 .hero-stat:last-child { border-right:none; }
-.hs-label { font-size:11px; color:#999; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
-.hs-val   { font-size:16px; font-weight:600; color:#111; }
+.hs-label { font-size:10px; color:#999; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
+.hs-val   { font-size:15px; font-weight:600; color:#111; }
 .hs-sub   { font-size:11px; color:#888; margin-top:2px; }
-
-/* Stack hero stats on very small screens */
-@media (max-width:480px) {
-    .hero-bottom { grid-template-columns:1fr 1fr; }
-    .hero-stat { border-right:none; border-bottom:1px solid #e8e8e8; }
-    .hero-stat:nth-child(odd) { border-right:1px solid #e8e8e8; }
-    .hs-val { font-size:14px; }
-}
-
 .pts-wrap { background:#fff; border:1px solid #e8e8e8; border-radius:12px;
     padding:1rem 1.25rem; margin-bottom:1rem; }
 .pts-title { font-size:11px; font-weight:600; color:#999; text-transform:uppercase;
     letter-spacing:.05em; margin-bottom:10px; }
 .pts-row  { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-.pts-name { font-size:13px; color:#111; width:120px; flex-shrink:0; }
+.pts-name { font-size:12px; color:#111; min-width:110px; }
 .pts-track{ flex:1; height:8px; background:#f0f0f0; border-radius:4px; overflow:hidden; }
 .pts-fill { height:100%; border-radius:4px; }
-.pts-amt  { font-size:12px; color:#888; min-width:80px; text-align:right; }
-@media (max-width:480px) {
-    .pts-name { width:80px; font-size:11px; }
-    .pts-amt  { min-width:60px; font-size:11px; }
-}
-.legend   { display:flex; flex-wrap:wrap; gap:12px; margin-top:10px; }
+.pts-amt  { font-size:11px; color:#888; min-width:80px; text-align:right; }
+.legend   { display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; }
 .legend-item { font-size:11px; color:#999; display:flex; align-items:center; gap:5px; }
 .legend-dot  { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-
-/* Result detail cards */
 .res-card { background:#fff; border:1px solid #e8e8e8; border-radius:12px;
     padding:1rem 1.25rem; margin-bottom:1rem; }
 .card-head { font-size:11px; font-weight:600; color:#999; text-transform:uppercase;
@@ -94,19 +73,18 @@ footer { display: none !important; }
 .dr-v { font-weight:500; color:#111; text-align:right; }
 .perks-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:1rem; }
 .chip { background:#f5f5f5; border:1px solid #e8e8e8; border-radius:20px;
-    padding:5px 12px; font-size:12px; color:#555; }
+    padding:4px 11px; font-size:12px; color:#555; }
 .steps-card { background:#fff; border:1px solid #e8e8e8; border-radius:12px;
     padding:1rem 1.25rem; margin-bottom:1rem; }
-.step { display:flex; gap:12px; padding:10px 0;
-    border-bottom:1px solid #f5f5f5; align-items:flex-start; }
+.step { display:flex; gap:12px; padding:9px 0; border-bottom:1px solid #f5f5f5; align-items:flex-start; }
 .step:last-child { border-bottom:none; }
-.step-num { width:26px; height:26px; min-width:26px; border-radius:50%;
+.step-num { width:24px; height:24px; min-width:24px; border-radius:50%;
     background:#e8f0fe; display:flex; align-items:center; justify-content:center;
     font-size:12px; font-weight:600; color:#1a56cc; }
-.step-title { font-size:13px; font-weight:600; color:#111; margin-bottom:3px; }
-.step-desc  { font-size:12px; color:#666; line-height:1.55; }
+.step-title { font-size:13px; font-weight:600; color:#111; margin-bottom:2px; }
+.step-desc  { font-size:12px; color:#666; line-height:1.5; }
 .alt-chip { background:#f7f7f7; border:1px solid #e8e8e8; border-radius:10px;
-    padding:.75rem 1rem; margin-bottom:8px; }
+    padding:.7rem 1rem; margin-bottom:8px; }
 .alt-name  { font-size:13px; font-weight:600; color:#111; margin-bottom:3px; }
 .alt-desc  { font-size:12px; color:#555; margin-bottom:3px; }
 .alt-trade { font-size:12px; color:#aaa; }
@@ -114,158 +92,45 @@ footer { display: none !important; }
     padding:1rem 1.25rem; margin-bottom:1rem; }
 .cc-eye  { font-size:11px; color:#1a56cc; font-weight:600; text-transform:uppercase;
     letter-spacing:.05em; margin-bottom:6px; }
-.cc-name { font-size:15px; font-weight:600; color:#111; margin-bottom:4px; }
+.cc-name { font-size:14px; font-weight:600; color:#111; margin-bottom:4px; }
 .cc-bonus{ font-size:13px; color:#2d7a3a; margin-bottom:6px; }
 .cc-why  { font-size:13px; color:#555; }
-.mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
-    padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
+.mock-banner { background:#fff8e6; border:1px solid #ffe082; border-radius:8px;
+    padding:.6rem 1rem; font-size:13px; color:#7a5700; margin-bottom:1rem; }
 
-/* ── Profile rows — keep flex on mobile ── */
-.prog-row { flex-wrap:nowrap !important; }
-@media (max-width:480px) {
-    .prog-name { font-size:12px !important; }
-}
+/* ══ PROFILE ROWS ══ */
+.prog-row { padding:8px 0; border-bottom:1px solid #f5f5f5; }
+.prog-row-inner { display:flex; align-items:flex-start; gap:8px; }
+.prog-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+.prog-name { font-size:13px; font-weight:600; color:#111; flex:1; }
+.prog-bal  { font-size:13px; color:#555; margin-right:8px; white-space:nowrap; }
+.prog-pill { display:inline-block; padding:2px 8px; border-radius:20px;
+    font-size:11px; font-weight:500; white-space:nowrap; }
 
-/* ── Cash vs points comparison — stack on mobile ── */
-.cvp-grid { display:flex; gap:.75rem; }
-@media (max-width:520px) {
-    .cvp-grid { flex-direction:column; }
-}
+/* ══ MOBILE ══ */
+@media (max-width:768px) {
+    /* Hide Streamlit sidebar entirely on mobile */
+    [data-testid="stSidebar"]       { display:none!important; }
+    [data-testid="collapsedControl"] { display:none!important; }
+    .block-container { padding-left:.75rem!important; padding-right:.75rem!important;
+                       padding-top:.5rem!important; max-width:100%!important; }
 
-/* ── Nav and button sizing on mobile ── */
-@media (max-width:480px) {
-    h1 { font-size:1.2rem !important; margin-bottom:.25rem !important; }
-    .stButton button { min-height:44px !important; font-size:14px !important; }
-}
+    /* Tab bar — slim, centered */
+    .nav-tab { padding:9px 14px; font-size:13px; }
 
-/* ── Two-col inputs stack to single col on narrow screens ── */
-@media (max-width:480px) {
-    [data-testid="stHorizontalBlock"] > div {
-        min-width:100% !important;
-    }
-}
+    /* Hero stats 2-col on narrow */
+    .hero-bottom { grid-template-columns:1fr 1fr; }
+    .hero-stat:nth-child(odd)  { border-right:1px solid #e8e8e8; }
+    .hero-stat:nth-child(even) { border-right:none; }
+    .hero-stat { border-bottom:1px solid #e8e8e8; }
+    .hero-stat:nth-last-child(-n+2) { border-bottom:none; }
 
-/* ════════════════════════════════════════
-   SEARCH CARD — Expedia/Google Flights style
-   Strip widget chrome, make rows feel tappable
-   ════════════════════════════════════════ */
-
-/* Outer card wrapper */
-.search-card-wrap {
-    border: 0.5px solid #e0e0e0;
-    border-radius: 14px;
-    overflow: hidden;
-    margin-bottom: 1rem;
-    background: #fff;
-}
-
-/* Each field row inside the card */
-.search-field-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 0 16px;
-    min-height: 56px;
-    border-bottom: 0.5px solid #f0f0f0;
-    cursor: pointer;
-}
-.search-field-row:last-child { border-bottom: none; }
-.sfi { font-size: 18px; color: #999; flex-shrink: 0; width: 22px; }
-.sfb { flex: 1; min-width: 0; }
-.sfl { font-size: 10px; color: #aaa; margin-bottom: 1px; text-transform: uppercase; letter-spacing: .04em; }
-.sfv { font-size: 14px; font-weight: 500; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sfc { font-size: 16px; color: #ccc; flex-shrink: 0; }
-
-/* Scope pills — styled like top toggle */
-.scope-pills { display: flex; gap: 0; border: 0.5px solid #e0e0e0; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
-.scope-pill { flex: 1; padding: 9px 0; text-align: center; font-size: 13px; font-weight: 500; color: #666; cursor: pointer; border-right: 0.5px solid #e0e0e0; background: #fff; }
-.scope-pill:last-child { border-right: none; }
-.scope-pill.active { background: #111; color: #fff; }
-
-/* Trip type pills */
-.tt-pills { display: flex; gap: 8px; margin-bottom: 10px; }
-.tt-pill { flex: 1; padding: 7px 0; text-align: center; font-size: 12px; border-radius: 8px; border: 0.5px solid #e0e0e0; color: #555; background: #fff; cursor: pointer; }
-.tt-pill.active { background: #e8f0fe; color: #1a56cc; border-color: #b8d0f8; font-weight: 500; }
-
-/* Strip Streamlit widget labels inside the search card */
-.search-card-inner [data-testid="stSelectbox"] label,
-.search-card-inner [data-testid="stDateInput"] label,
-.search-card-inner [data-testid="stNumberInput"] label,
-.search-card-inner [data-testid="stSlider"] label { display: none !important; }
-
-/* Compress widget internal padding */
-.search-card-inner [data-testid="stSelectbox"] > div,
-.search-card-inner [data-testid="stDateInput"] > div { margin: 0 !important; padding: 0 !important; }
-
-/* Make selectbox fill the row */
-.search-card-inner [data-testid="stSelectbox"] { margin-bottom: 0 !important; }
-
-/* Global: on mobile compress the metric strip */
-@media (max-width: 600px) {
-    [data-testid="stMetric"] { padding: 6px 8px !important; }
-    [data-testid="stMetricValue"] { font-size: 1.1rem !important; }
-    [data-testid="stMetricLabel"] { font-size: 11px !important; }
-}
-
-/* ── Mobile: compress all widget vertical padding ── */
-@media (max-width: 768px) {
-    /* Reduce top padding on page */
-    .block-container { padding-top: 0.5rem !important; }
-
-    /* Compress selectbox height */
-    [data-testid="stSelectbox"] { margin-bottom: 6px !important; }
-    [data-testid="stSelectbox"] > div > div { min-height: 36px !important; }
-
-    /* Compress date inputs */
-    [data-testid="stDateInput"] { margin-bottom: 6px !important; }
-    [data-testid="stDateInput"] > div { min-height: 36px !important; }
-
-    /* Compress radio buttons */
-    [data-testid="stRadio"] { margin-bottom: 6px !important; }
-    [data-testid="stRadio"] > div { gap: 4px !important; }
-
-    /* Compress slider */
-    [data-testid="stSlider"] { margin-bottom: 6px !important; padding: 0 !important; }
-
-    /* Compress number input */
-    [data-testid="stNumberInput"] { margin-bottom: 6px !important; }
-
-    /* Tighten column gaps */
-    [data-testid="stHorizontalBlock"] { gap: 8px !important; }
-
-    /* Widget labels smaller */
-    .search-card-inner label { font-size: 12px !important; margin-bottom: 2px !important; }
-
-    /* Make radio look like pill tabs */
-    [data-testid="stRadio"] label {
-        padding: 6px 12px !important;
-        border-radius: 20px !important;
-        border: 0.5px solid #e0e0e0 !important;
-        font-size: 12px !important;
-    }
-
-    /* Search button — tall and prominent */
-    [data-testid="baseButton-primary"] {
-        min-height: 52px !important;
-        font-size: 16px !important;
-        border-radius: 12px !important;
-        margin-top: 4px !important;
-    }
-
-    /* Nav buttons — compact */
-    [data-testid="baseButton-secondary"] {
-        min-height: 36px !important;
-        font-size: 13px !important;
-    }
-
-    /* Caption text smaller */
-    [data-testid="stCaptionContainer"] { font-size: 11px !important; }
+    /* Points name shorter */
+    .pts-name { min-width:80px; font-size:11px; }
+    .pts-amt  { min-width:60px; font-size:11px; }
 }
 </style>
 """, unsafe_allow_html=True)
-
-
-
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
 # ─────────────────────────────────────────────
@@ -595,60 +460,35 @@ def page_trip():
         st.warning("Your loyalty profile is empty. Go to **My Profile** and add your programs first.")
         return
 
-    # ── Status + User Stats strip ──
-    gen_at = get_metadata().get("generated_at", "")
+    # ── Compact status line ──
+    gen_at    = get_metadata().get("generated_at", "")
     total_pts = sum(e["balance"] for e in profile.values())
     elite_ct  = sum(1 for e in profile.values() if e["status"] not in ["None","Standard"])
     prog_ct   = len(profile)
-
-    # Mock/market status caption
-    if mock_mode:
-        st.caption("Preview mode — sample data")
-    elif gen_at and gen_at != "not-yet-refreshed":
-        st.caption(f"Market data: {gen_at[:10]}")
-    else:
-        st.caption("Market data not yet loaded")
-
-    # User Stats bar
+    _status_note = "Preview mode" if mock_mode else (f"Market data: {gen_at[:10]}" if gen_at and gen_at != "not-yet-refreshed" else "Market data not loaded")
     st.markdown(
-        f'''<div style="display:flex;gap:0;border:1px solid #e5e7eb;border-radius:10px;
-                overflow:hidden;margin:.4rem 0 .75rem;background:#fff;">
-          <div style="flex:1;padding:10px 8px;border-right:1px solid #e5e7eb;text-align:center;">
-            <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;
-                 letter-spacing:.05em;margin-bottom:3px;">Programs</div>
-            <div style="font-size:20px;font-weight:600;color:#111827;line-height:1;">{prog_ct}</div>
-          </div>
-          <div style="flex:1;padding:10px 8px;border-right:1px solid #e5e7eb;text-align:center;">
-            <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;
-                 letter-spacing:.05em;margin-bottom:3px;">Total Points</div>
-            <div style="font-size:20px;font-weight:600;color:#111827;line-height:1;">{total_pts:,}</div>
-          </div>
-          <div style="flex:1;padding:10px 8px;text-align:center;">
-            <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;
-                 letter-spacing:.05em;margin-bottom:3px;">Elite</div>
-            <div style="font-size:20px;font-weight:600;color:#111827;line-height:1;">{elite_ct}</div>
-          </div>
-        </div>''',
+        f'<div style="font-size:12px;color:#888;margin-bottom:.5rem;">' 
+        f'<b>{prog_ct}</b> programs &nbsp;·&nbsp; <b>{total_pts:,}</b> pts &nbsp;·&nbsp; ' 
+        f'<b>{elite_ct}</b> elite &nbsp;·&nbsp; {_status_note}</div>',
         unsafe_allow_html=True)
 
     # ════════════════════════════════════════
-    #  SEARCH CARD — native Streamlit widgets
+    #  TRIP INPUTS — sidebar (always reliable)
     # ════════════════════════════════════════
+    with st.sidebar:
 
-    with st.form("trip_form"):
-
-        # ── Scope ──
+        # Scope
         scope_options = ["Flight + Hotel", "Flight only", "Hotel only"]
         search_scope = st.radio(
-            "I want to optimize my",
-            scope_options, horizontal=True,
+            "Optimize for", scope_options, horizontal=True,
             index=scope_options.index(
                 st.session_state.get("trip_scope", "Flight + Hotel")),
             key="search_scope")
         include_flight = search_scope in ["Flight + Hotel", "Flight only"]
         include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
+        st.divider()
 
-        # ── Defaults ──
+        # Defaults
         origin_city = origin_code = dest_city = dest_code = ""
         cabin = "Economy"; hotel_style = "Standard"
         depart_date = date(2026, 6, 10); return_date = None
@@ -658,63 +498,47 @@ def page_trip():
             st.markdown("**Flight**")
             trip_type = st.radio(
                 "Trip type", ["Round trip", "One way"], horizontal=True,
-                index=0 if st.session_state.get("trip_type","Round trip")=="Round trip" else 1,
                 key="form_trip_type")
             is_roundtrip = trip_type == "Round trip"
 
             fc1, fc2 = st.columns(2)
             with fc1:
-                orig_default = st.session_state.get("origin_label","San Francisco, CA — SFO (SFO)")
+                orig_default = st.session_state.get("origin_label", "San Francisco, CA — SFO (SFO)")
                 orig_idx = AIRPORT_LABELS.index(orig_default) if orig_default in AIRPORT_LABELS else 0
                 origin_label = st.selectbox("From", AIRPORT_LABELS, index=orig_idx, key="form_orig")
-                origin_code = AIRPORTS[origin_label]
-                origin_city = origin_label.split(" —")[0]
+                origin_code  = AIRPORTS[origin_label]
+                origin_city  = origin_label.split(" —")[0]
             with fc2:
-                dest_default = st.session_state.get("dest_label","Tokyo — Narita (NRT)")
+                dest_default = st.session_state.get("dest_label", "Tokyo — Narita (NRT)")
                 dest_idx = AIRPORT_LABELS.index(dest_default) if dest_default in AIRPORT_LABELS else 1
                 dest_label = st.selectbox("To", AIRPORT_LABELS, index=dest_idx, key="form_dest")
-                dest_code = AIRPORTS[dest_label]
-                dest_city = dest_label.split(" —")[0]
+                dest_code  = AIRPORTS[dest_label]
+                dest_city  = dest_label.split(" —")[0]
 
-            cabin = st.selectbox("Cabin",
-                ["Economy","Premium Economy","Business","First"],
-                index=["Economy","Premium Economy","Business","First"].index(
-                    st.session_state.get("cabin","Business")),
-                key="form_cabin")
+            cabin = st.selectbox("Cabin class",
+                ["Economy", "Premium Economy", "Business", "First"], key="form_cabin")
 
             if is_roundtrip:
                 dc1, dc2 = st.columns(2)
-                _dep_def = st.session_state.get("depart_date", date(2026,6,10))
-                _ret_def = st.session_state.get("return_date", date(2026,6,20))
-                if isinstance(_dep_def, str):
-                    try: _dep_def = date.fromisoformat(_dep_def)
-                    except: _dep_def = date(2026,6,10)
-                if isinstance(_ret_def, str):
-                    try: _ret_def = date.fromisoformat(_ret_def)
-                    except: _ret_def = date(2026,6,20)
                 with dc1:
-                    depart_date = st.date_input("Depart", value=_dep_def,
+                    depart_date = st.date_input("Depart", value=date(2026, 6, 10),
                         min_value=date.today(), key="form_depart")
                 with dc2:
                     return_date = st.date_input("Return",
-                        value=_ret_def if _ret_def > _dep_def else _dep_def + timedelta(days=7),
+                        value=date(2026, 6, 20),
                         min_value=depart_date + timedelta(days=1), key="form_return")
                 flight_nights = (return_date - depart_date).days
-                st.caption(f"{flight_nights} nights away")
+                st.caption(f"{flight_nights} nights")
             else:
-                _dep_def = st.session_state.get("depart_date", date(2026,6,10))
-                if isinstance(_dep_def, str):
-                    try: _dep_def = date.fromisoformat(_dep_def)
-                    except: _dep_def = date(2026,6,10)
-                depart_date = st.date_input("Departure date", value=_dep_def,
+                depart_date = st.date_input("Departure", value=date(2026, 6, 10),
                     min_value=date.today(), key="form_depart_ow")
 
         if include_hotel:
-            if include_flight: st.markdown("**Hotel**")
-            else: st.markdown("**Hotel**")
-
+            if include_flight:
+                st.divider()
+            st.markdown("**Hotel**")
             if not include_flight:
-                dest_default = st.session_state.get("dest_label","Tokyo — Narita (NRT)")
+                dest_default = st.session_state.get("dest_label", "Tokyo — Narita (NRT)")
                 dest_idx = AIRPORT_LABELS.index(dest_default) if dest_default in AIRPORT_LABELS else 1
                 dest_label = st.selectbox("Destination", AIRPORT_LABELS,
                     index=dest_idx, key="form_hotel_dest")
@@ -722,50 +546,37 @@ def page_trip():
                 dest_code = AIRPORTS[dest_label]
                 hc1, hc2 = st.columns(2)
                 with hc1:
-                    checkin_date = st.date_input("Check-in", value=date(2026,6,10),
+                    checkin_date = st.date_input("Check-in", value=date(2026, 6, 10),
                         min_value=date.today(), key="form_checkin")
                 with hc2:
-                    checkout_date = st.date_input("Check-out",
-                        value=date(2026,6,15),
+                    checkout_date = st.date_input("Check-out", value=date(2026, 6, 15),
                         min_value=checkin_date + timedelta(days=1), key="form_checkout")
                 hotel_nights = (checkout_date - checkin_date).days
-                depart_date = checkin_date
-                st.caption(f"{hotel_nights} nights")
+                depart_date  = checkin_date
             elif is_roundtrip and flight_nights:
                 hotel_nights = flight_nights
-                st.caption(f"Staying {hotel_nights} nights — matches your flight")
+                st.caption(f"Staying {hotel_nights} nights — matches flight")
             else:
-                hotel_nights = st.number_input("Nights", min_value=1, max_value=60,
-                    value=5, key="form_hotel_nights")
+                hotel_nights = st.number_input("Nights", min_value=1,
+                    max_value=60, value=5, key="form_hotel_nights")
 
             hotel_style = st.selectbox("Hotel style",
-                ["Budget","Standard","Luxury"],
-                index=["Budget","Standard","Luxury"].index(
-                    st.session_state.get("hotel_style","Standard")),
-                key="form_hotel_style")
+                ["Budget", "Standard", "Luxury"], key="form_hotel_style")
 
+        st.divider()
         val_exp = st.slider("Value ←→ Experience", 1, 10,
             st.session_state.get("val_exp", 5), key="form_val_exp",
-            help="1 = maximize points value · 10 = maximize experience quality")
-
-        run = st.form_submit_button(
-            "🔍  Find My Best Trip",
-            use_container_width=True, type="primary")
-
-    # ── Persist values for next render ──
-    if run:
-        st.session_state.update({
-            "trip_scope":   search_scope,
-            "trip_type":    "Round trip" if is_roundtrip else "One way",
-            "origin_label": origin_label if include_flight else st.session_state.get("origin_label",""),
-            "dest_label":   dest_label if (include_flight or include_hotel) else st.session_state.get("dest_label",""),
-            "depart_date":  depart_date,
-            "return_date":  return_date,
-            "cabin":        cabin,
-            "hotel_style":  hotel_style,
-            "val_exp":      val_exp,
-        })
-
+            help="1 = max value · 10 = max experience")
+        st.divider()
+        run = st.button("🔍 Find My Best Trip", type="primary",
+                        use_container_width=True, key="run_btn")
+        
+        # Status
+        gen_at = get_metadata().get("generated_at", "")
+        if mock_mode:
+            st.caption("Preview mode — sample data")
+        elif gen_at and gen_at != "not-yet-refreshed":
+            st.caption(f"Market data: {gen_at[:10]}")
     # ── Date summary string ──
     if include_flight and is_roundtrip and return_date:
         dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
@@ -777,10 +588,47 @@ def page_trip():
         dates_str = ""
 
     nights = hotel_nights if hotel_nights else (flight_nights or 0)
-    st.markdown("---")
+    # ── Mobile trip summary card (hidden on desktop via CSS) ──
+    _orig_disp = origin_city or "—"
+    _dest_disp = dest_city   or "—"
+    _dates_disp = dates_str  or "—"
+    _scope_disp = search_scope
+    _pref_disp  = " · ".join(filter(None, [
+        cabin         if include_flight else "",
+        hotel_style   if include_hotel  else "",
+    ]))
+    st.markdown(
+        f'''<div class="mobile-trip-card" style="display:none;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
+               overflow:hidden;margin-bottom:.75rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                 padding:12px 16px;border-bottom:1px solid #f3f4f6;cursor:pointer;"
+                 onclick="document.querySelector('[data-testid=stSidebar]').style.display='block'">
+              <span style="font-size:14px;font-weight:600;color:#111;">Optimize for</span>
+              <span style="font-size:13px;color:#555;">{_scope_disp}</span>
+            </div>
+            <div style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">
+              <div style="font-size:14px;font-weight:600;color:#111;margin-bottom:6px;">Route</div>
+              <div style="font-size:13px;color:#555;">{_orig_disp} → {_dest_disp}</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                 padding:12px 16px;border-bottom:1px solid #f3f4f6;">
+              <span style="font-size:14px;font-weight:600;color:#111;">Dates</span>
+              <span style="font-size:13px;color:#555;">{_dates_disp}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                 padding:12px 16px;">
+              <span style="font-size:14px;font-weight:600;color:#111;">Preferences</span>
+              <span style="font-size:13px;color:#555;">{_pref_disp}</span>
+            </div>
+          </div>
+        </div>
+        <style>@media(max-width:768px){{.mobile-trip-card{{display:block!important;}}}}</style>
+        ''',
+        unsafe_allow_html=True)
 
     if not run:
-        st.caption("Configure your trip above and tap **Find My Best Trip**.")
+        st.caption("Configure your trip in the sidebar, then click **Find My Best Trip**.")
         return
 
 
@@ -996,63 +844,31 @@ The session stays authenticated until you log out or close the browser.
 
 cur_page = st.session_state.get("page", "profile")
 
-# ── Page label for header ──
-_page_labels = {"profile": "My Profile", "trip": "Plan a Trip", "admin": "Admin"}
-_cur_label   = _page_labels.get(cur_page, "My Profile")
-
-# ── Nav: hamburger icon + page title using reliable st.button ──
-
-# Nav header row
-_nav_col1, _nav_col2, _nav_col3, _nav_col4 = st.columns([0.5, 2.5, 1.2, 1.2])
-with _nav_col1:
-    # Hamburger button — toggles a session_state flag for the menu
-    if "show_nav_menu" not in st.session_state:
-        st.session_state.show_nav_menu = False
-    if st.button("☰", key="hamburger_btn", help="Menu"):
-        st.session_state.show_nav_menu = not st.session_state.show_nav_menu
-        st.rerun()
-with _nav_col2:
+# ── Header: app name left, tab nav right (desktop) / full-width tabs (mobile) ──
+_hcol1, _hcol2 = st.columns([1, 3])
+with _hcol1:
     st.markdown(
-        f'<div style="padding:6px 0;">'
-        f'<div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;">AI Loyalty Optimizer</div>'
-        f'<div style="font-size:15px;font-weight:600;color:#111827;">{_cur_label}</div>'
-        f'</div>',
+        "<p style='font-size:1.1rem;font-weight:700;color:#111;margin:.5rem 0 0;'>"
+        "Loyalty Optimizer</p>",
         unsafe_allow_html=True)
-with _nav_col3:
-    pass
-with _nav_col4:
-    pass
+with _hcol2:
+    # Tab-style nav using st.buttons styled via CSS as underline tabs
+    _t1, _t2, _t3, _tspc = st.columns([1, 1, 0.7, 3])
+    with _t1:
+        if st.button("My Profile", key="nav_profile", use_container_width=True,
+                     type="primary" if cur_page == "profile" else "secondary"):
+            st.session_state.page = "profile"; st.rerun()
+    with _t2:
+        if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
+                     type="primary" if cur_page == "trip" else "secondary"):
+            st.session_state.page = "trip"; st.rerun()
+    with _t3:
+        if st.button("Admin", key="nav_admin", use_container_width=True,
+                     type="primary" if cur_page == "admin" else "secondary"):
+            st.session_state.page = "admin"; st.rerun()
 
-# Dropdown menu — shown when hamburger tapped
-if st.session_state.get("show_nav_menu"):
-    with st.container():
-        st.markdown(
-            '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;'
-            'overflow:hidden;margin-bottom:.5rem;">',
+st.markdown("<hr style='margin:.2rem 0 .75rem;border:none;border-top:1px solid #e8e8e8;'>",
             unsafe_allow_html=True)
-        menu_items = [
-            ("👤", "My Profile", "profile"),
-            ("✈️", "Plan a Trip", "trip"),
-            ("⚙️", "Admin", "admin"),
-        ]
-        for icon, label, page_key in menu_items:
-            is_active = cur_page == page_key
-            btn_type  = "primary" if is_active else "secondary"
-            if st.button(
-                f"{icon}  {label}",
-                key=f"menu_{page_key}",
-                use_container_width=True,
-                type=btn_type,
-            ):
-                st.session_state.page = page_key
-                st.session_state.show_nav_menu = False
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown(
-    "<hr style='margin:4px 0 .75rem;border:none;border-top:1px solid #e8e8e8;'>",
-    unsafe_allow_html=True)
-
 if cur_page == "profile":
     page_profile()
 elif cur_page == "admin":
