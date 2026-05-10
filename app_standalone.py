@@ -151,18 +151,20 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
-/* ── Scope tile icons — sit directly above the button below them.
-     CSS removes the gap and merges them into one rounded tile. ── */
+/* ── Scope tile: button is invisible underneath, icon div sits on top ── */
 .tile-icon {
     background: #fff;
     border: 2px solid #e0e0e0;
-    border-bottom: none;
-    border-radius: 14px 14px 0 0;
-    padding: 18px 8px 10px;
-    margin: 0 0 -2px 0;     /* overlap with button border below */
+    border-radius: 14px;
+    padding: 18px 8px 14px;
+    margin: 0;
     text-align: center;
     line-height: 1;
     transition: background .12s, border-color .12s;
+    position: relative;
+    z-index: 2;
+    pointer-events: none;  /* clicks pass through to button below */
+    user-select: none;
 }
 .tile-icon.active {
     background: #111;
@@ -171,33 +173,48 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
 .tile-icon i {
     line-height: 1;
 }
+.tile-icon-label {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 600;
+    margin-top: 8px;
+    line-height: 1.2;
+}
+.tile-icon:not(.active) .tile-icon-label { color: #333; }
+.tile-icon.active .tile-icon-label { color: #fff; font-weight: 700; }
 
-/* Style the buttons that sit RIGHT BELOW a .tile-icon */
-.tile-icon + div[data-testid="stElementContainer"] button,
+/* The Streamlit button below — pull it up to overlap and fill the tile area */
+.tile-icon + div[data-testid="stElementContainer"],
+.tile-icon + div.stElementContainer,
+.tile-icon + div {
+    margin-top: -90px !important;
+    height: 90px !important;
+    position: relative;
+    z-index: 1;
+}
 .tile-icon + div button {
-    border-radius: 0 0 14px 14px !important;
-    border-top: none !important;
-    margin-top: 0 !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    height: auto !important;
-    min-height: 36px !important;
-    padding: 6px 4px 12px !important;
-    line-height: 1.2 !important;
+    width: 100% !important;
+    height: 90px !important;
+    background: transparent !important;
+    border: 2px solid transparent !important;
+    color: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    border-radius: 14px !important;
 }
-/* Active tile: button matches the black icon div above it */
-.tile-icon.active + div[data-testid="stElementContainer"] button,
-.tile-icon.active + div button {
-    background: #111 !important;
-    color: #fff !important;
-    border-color: #111 !important;
+.tile-icon + div button:hover {
+    background: transparent !important;
+    border-color: rgba(0,0,0,0.15) !important;
 }
-/* Inactive tile: button is white with gray border */
-.tile-icon:not(.active) + div[data-testid="stElementContainer"] button,
-.tile-icon:not(.active) + div button {
-    background: #fff !important;
-    color: #333 !important;
-    border-color: #e0e0e0 !important;
+.tile-icon + div button:focus,
+.tile-icon + div button:active {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.tile-icon + div button p,
+.tile-icon + div button div {
+    color: transparent !important;
 }
 
 /* Seg button rows — force single row, never stack */
@@ -1730,10 +1747,9 @@ def page_trip():
 
     def scope_tiles():
         """
-        Three icon tiles. Each tile = an icon div (st.markdown) + an st.button
-        below it in the same column. CSS merges them into one visual unit.
+        Tile = visible icon+label div ON TOP of an invisible Streamlit button.
+        Clicks pass through to the button (CSS pointer-events).
         """
-        # Load Tabler icons font (idempotent — only loads once per page)
         st.markdown(
             '<link rel="stylesheet" '
             'href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">',
@@ -1743,8 +1759,10 @@ def page_trip():
 
         TILES = [
             ("Flight + Hotel", "tile_fh",
+             '<div style="display:flex;gap:5px;align-items:center;justify-content:center;">'
              '<i class="ti ti-plane-tilt" style="font-size:22px;"></i>'
-             '<i class="ti ti-building" style="font-size:22px;"></i>'),
+             '<i class="ti ti-building" style="font-size:22px;"></i>'
+             '</div>'),
             ("Flight", "tile_fl",
              '<i class="ti ti-plane-tilt" style="font-size:30px;"></i>'),
             ("Hotel", "tile_ht",
@@ -1755,18 +1773,17 @@ def page_trip():
         for i, (label, key, icon_html) in enumerate(TILES):
             with cols[i]:
                 is_active = label == current
-                # Color of icon depends on active state (white on black, gray on white)
                 ic_color = "#ffffff" if is_active else "#555555"
-                # Render the icon div above the button — CSS will merge them visually
+                # The visible tile: icon + label, with explicit color
                 st.markdown(
                     f'<div class="tile-icon{" active" if is_active else ""}" '
                     f'style="color:{ic_color};">'
-                    f'<div style="display:flex;gap:5px;align-items:center;justify-content:center;">'
                     f'{icon_html}'
-                    f'</div></div>',
+                    f'<span class="tile-icon-label">{label}</span>'
+                    f'</div>',
                     unsafe_allow_html=True)
-                if st.button(label, key=key, use_container_width=True,
-                             type="primary" if is_active else "secondary"):
+                # The invisible button underneath — full tile click target
+                if st.button(label, key=key, use_container_width=True):
                     st.session_state["t_scope"] = label
                     st.rerun()
 
