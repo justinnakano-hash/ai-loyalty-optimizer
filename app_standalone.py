@@ -665,12 +665,12 @@ def page_profile_desktop():
 
     ac1, ac2, ac3, ac4, ac5 = st.columns([1.4, 1.8, 1.4, 1.8, 0.8])
     with ac1:
-        add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="add_cat")
+        add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="m_add_cat")
     already_added = set(profile.keys())
     available = [p for p in PROGRAMS[add_cat] if p not in already_added]
     with ac2:
         if available:
-            add_prog = st.selectbox("Program", available, key="add_prog")
+            add_prog = st.selectbox("Program", available, key="m_add_prog")
         else:
             st.selectbox("Program", ["— all added —"], disabled=True,
                          key="add_prog_dis")
@@ -684,7 +684,7 @@ def page_profile_desktop():
                 "Status", PROGRAMS[add_cat][add_prog]["statuses"],
                 key="add_status")
         else:
-            st.selectbox("Status", ["—"], disabled=True, key="add_status_dis")
+            st.selectbox("Status", ["—"], disabled=True, key="m_add_status_dis")
             add_status = None
     with ac5:
         # Align button to bottom of column to match input height
@@ -733,21 +733,21 @@ def page_profile_mobile():
                         unsafe_allow_html=True)
                     new_bal = st.number_input(
                         "Balance", min_value=0, step=1000, value=bal,
-                        key=f"ebal_{prog_name}")
+                        key=f"m_ebal_{prog_name}")
                     idx = pdata["statuses"].index(status) if status in pdata["statuses"] else 0
                     new_status = st.selectbox(
                         "Status", pdata["statuses"], index=idx,
-                        key=f"estat_{prog_name}")
+                        key=f"m_estat_{prog_name}")
                     bc1, bc2 = st.columns(2)
                     with bc1:
-                        if st.button("Save", key=f"save_{prog_name}",
+                        if st.button("Save", key=f"m_save_{prog_name}",
                                      use_container_width=True, type="primary"):
                             st.session_state.profile[prog_name] = {
                                 "balance": new_bal, "status": new_status}
                             st.session_state.editing = None
                             st.rerun()
                     with bc2:
-                        if st.button("Cancel", key=f"cancel_{prog_name}",
+                        if st.button("Cancel", key=f"m_cancel_{prog_name}",
                                      use_container_width=True):
                             st.session_state.editing = None
                             st.rerun()
@@ -774,12 +774,12 @@ def page_profile_mobile():
                     # Edit/Remove icons under the row, small
                     ec1, ec2, _ = st.columns([1, 1, 4])
                     with ec1:
-                        if st.button("Edit", key=f"edit_{prog_name}",
+                        if st.button("Edit", key=f"m_edit_{prog_name}",
                                      use_container_width=True):
                             st.session_state.editing = prog_name
                             st.rerun()
                     with ec2:
-                        if st.button("Remove", key=f"del_{prog_name}",
+                        if st.button("Remove", key=f"m_del_{prog_name}",
                                      use_container_width=True):
                             del st.session_state.profile[prog_name]
                             if st.session_state.editing == prog_name:
@@ -796,19 +796,19 @@ def page_profile_mobile():
     if available:
         add_prog = st.selectbox("Program", available, key="add_prog")
     else:
-        st.selectbox("Program", ["— all added —"], disabled=True, key="add_prog_dis")
+        st.selectbox("Program", ["— all added —"], disabled=True, key="m_add_prog_dis")
         add_prog = None
     add_bal = st.number_input("Balance (pts)", min_value=0, step=1000,
-                              value=0, key="add_bal")
+                              value=0, key="m_add_bal")
     if add_prog:
         add_status = st.selectbox(
-            "Status", PROGRAMS[add_cat][add_prog]["statuses"], key="add_status")
+            "Status", PROGRAMS[add_cat][add_prog]["statuses"], key="m_add_status")
     else:
         st.selectbox("Status", ["—"], disabled=True, key="add_status_dis")
         add_status = None
 
     if st.button("+ Add program", use_container_width=True, type="primary",
-                 disabled=not add_prog, key="add_btn"):
+                 disabled=not add_prog, key="m_add_btn"):
         st.session_state.profile[add_prog] = {
             "balance": add_bal, "status": add_status}
         st.rerun()
