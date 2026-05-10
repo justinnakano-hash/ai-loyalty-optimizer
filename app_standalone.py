@@ -607,6 +607,18 @@ if "m_search_scope" not in st.session_state: st.session_state.m_search_scope = "
 if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "Round trip"
 
 # ─────────────────────────────────────────────
+#  HANDLE TILE-CLICK QUERY PARAMS (from iframe-based scope tiles)
+# ─────────────────────────────────────────────
+# When a user taps a tile, the iframe navigates parent to ?scope=fh/fl/ht.
+# Read the param, convert to session state, ensure we stay on the trip page.
+_qp_scope = st.query_params.get("scope")
+if _qp_scope in ["fh", "fl", "ht"]:
+    _scope_map = {"fh": "Flight + Hotel", "fl": "Flight", "ht": "Hotel"}
+    st.session_state["t_scope"] = _scope_map[_qp_scope]
+    st.session_state["page"]    = "trip"
+    st.query_params.clear()
+
+# ─────────────────────────────────────────────
 #  MOCK DATA
 # ─────────────────────────────────────────────
 MOCK = {
@@ -1690,98 +1702,77 @@ def page_trip():
         return st.session_state.get(state_key, options[0])
 
     def scope_tiles():
+        """
+        Renders 3 icon tiles inside an iframe via st.components.v1.html.
+        Tile clicks navigate the parent URL with ?scope=... — that's read at
+        module level and converted to session state before this runs.
+        """
         current = st.session_state.get("t_scope", "Flight + Hotel")
 
+        # Map labels to short codes for the URL param
         TILES = [
-            ("Flight + Hotel",
+            ("Flight + Hotel", "fh",
              '<div class="st-icons-dual"><i class="ti ti-plane-tilt"></i>'
              '<i class="ti ti-building"></i></div>'),
-            ("Flight",
+            ("Flight", "fl",
              '<div class="st-icons"><i class="ti ti-plane-tilt"></i></div>'),
-            ("Hotel",
+            ("Hotel", "ht",
              '<div class="st-icons"><i class="ti ti-building"></i></div>'),
         ]
 
-        tiles = ""
-        for label, icon_html in TILES:
+        tiles_html = ""
+        for label, code, icon_html in TILES:
             active_cls = " active" if label == current else ""
-            # JS: update visual instantly, then find+click the matching hidden button
-            tiles += (
-                f'<div class="st-tile{active_cls}" data-lbl="{label}" '
-                f'onclick="stTileClick(this)">'
+            tiles_html += (
+                f'<div class="st-tile{active_cls}" data-code="{code}" '
+                f'onclick="pickTile(\'{code}\')">'
                 f'{icon_html}'
                 f'<div class="st-label">{label}</div>'
                 f'</div>'
             )
 
-        html = (
-            '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">'
-            '<style>'
-            '.st-tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:4px;}'
-            '.st-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;'
-            'gap:10px;padding:20px 6px 16px;border-radius:14px;border:2px solid #e0e0e0;'
-            'background:#fff;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;'
-            'transition:background .12s,border-color .12s;}'
-            '.st-tile.active{background:#111;border-color:#111;}'
-            '.st-tile.active i{color:#fff !important;}'
-            '.st-tile.active .st-label{color:#fff !important;font-weight:700;}'
-            '.st-icons i,.st-icons-dual i{font-size:30px;color:#555;line-height:1;}'
-            '.st-icons-dual{display:flex;gap:5px;align-items:center;}'
-            '.st-icons-dual i{font-size:22px;}'
-            '.st-label{font-size:11.5px;font-weight:600;color:#333;text-align:center;'
-            'line-height:1.2;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;}'
-            '</style>'
-            '<script>'
-            'function stTileClick(t){'
-            '  document.querySelectorAll(".st-tile").forEach(function(x){x.classList.remove("active");});'
-            '  t.classList.add("active");'
-            '  var lbl=t.getAttribute("data-lbl");'
-            '  document.querySelectorAll("button").forEach(function(b){'
-            '    if(b.getAttribute("data-testid")==="baseButton-secondary"||'
-            '       b.getAttribute("data-testid")==="baseButton-primary"){'
-            '      if(b.innerText.trim()===lbl){b.click();}'
-            '    }'
-            '  });'
-            '}'
-            '</script>'
-            f'<div class="st-tiles">{tiles}</div>'
-        )
-        st.markdown(html, unsafe_allow_html=True)
-
-        # Inject CSS that hides the three trigger buttons by their exact label text
-        # Uses :has(p) selector targeting Streamlit's button label element
-        st.markdown("""
+        full_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
-button[kind="secondary"]:has(div:first-child > p),
-button[kind="primary"]:has(div:first-child > p) { display: initial; }
-
-[data-testid="stBaseButton-secondary"] p,
-[data-testid="stBaseButton-primary"] p { font-size: inherit; }
-
-/* Hide tile trigger buttons specifically by matching their parent stButton wrapper */
-div.st-tile-btn-hide { height: 0 !important; overflow: hidden !important;
-    position: absolute !important; opacity: 0 !important;
-    pointer-events: none !important; clip: rect(0,0,0,0) !important; }
+  body {{ margin:0; padding:0; background:transparent;
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }}
+  .st-tiles {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }}
+  .st-tile {{ display:flex; flex-direction:column; align-items:center;
+              justify-content:center; gap:10px; padding:20px 6px 16px;
+              border-radius:14px; border:2px solid #e0e0e0; background:#fff;
+              cursor:pointer; user-select:none;
+              -webkit-tap-highlight-color:transparent;
+              transition:background .12s, border-color .12s; }}
+  .st-tile.active {{ background:#111; border-color:#111; }}
+  .st-tile i {{ font-size:30px; color:#555; line-height:1; }}
+  .st-tile.active i {{ color:#fff; }}
+  .st-icons-dual {{ display:flex; gap:5px; align-items:center; }}
+  .st-icons-dual i {{ font-size:22px; }}
+  .st-label {{ font-size:11.5px; font-weight:600; color:#333;
+               text-align:center; line-height:1.2; }}
+  .st-tile.active .st-label {{ color:#fff; font-weight:700; }}
 </style>
-""", unsafe_allow_html=True)
+</head>
+<body>
+<div class="st-tiles">{tiles_html}</div>
+<script>
+function pickTile(code) {{
+  // Navigate parent (Streamlit) to add ?scope=CODE
+  // This triggers a Streamlit rerun where Python reads the query param
+  var parentUrl = new URL(window.parent.location.href);
+  parentUrl.searchParams.set('scope', code);
+  window.parent.location.href = parentUrl.toString();
+}}
+</script>
+</body>
+</html>
+"""
+        st.components.v1.html(full_html, height=125)
 
-        st.markdown('<div class="st-tile-btn-hide">', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            if st.button("Flight + Hotel", key="tile_fh"):
-                st.session_state["t_scope"] = "Flight + Hotel"
-                st.rerun()
-        with c2:
-            if st.button("Flight", key="tile_fl"):
-                st.session_state["t_scope"] = "Flight"
-                st.rerun()
-        with c3:
-            if st.button("Hotel", key="tile_ht"):
-                st.session_state["t_scope"] = "Hotel"
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        return st.session_state.get("t_scope", "Flight + Hotel")
+        return current
 
     def mf_open(label, value=""):
         val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
