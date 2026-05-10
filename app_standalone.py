@@ -424,8 +424,7 @@ MOCK = {
 #  PAGE: MY PROFILE
 # ─────────────────────────────────────────────
 def page_profile():
-    st.markdown("## My Loyalty Profile")
-    st.caption("Set up once — used for every trip.")
+    st.caption("Set up once — reused for every trip.")
 
     profile = st.session_state.profile
     editing = st.session_state.get("editing", None)
@@ -538,8 +537,8 @@ def page_profile():
             f'</div>',
             unsafe_allow_html=True)
 
-    # ── Add program — 2-col grid works on mobile and desktop ──
-    st.markdown("---")
+    # ── Add program ──
+    st.markdown("<hr style='margin:.5rem 0 .5rem;border:none;border-top:1px solid #f0f0f0;'>", unsafe_allow_html=True)
     st.markdown("**Add a program**")
 
     already_added = set(profile.keys())
@@ -590,46 +589,45 @@ def page_trip():
     _override = st.session_state.get("mock_override", None)
     mock_mode = _override if _override is not None else (api_key is None)
 
-    st.markdown("## Plan a Trip")
-
     if not profile:
         st.warning("Your loyalty profile is empty. Go to **My Profile** and add your programs first.")
         return
 
-    # ── Status strip ──
+    # ── Status + User Stats strip ──
     gen_at = get_metadata().get("generated_at", "")
-    if mock_mode:
-        st.info("Preview mode — showing sample data.")
-    elif gen_at and gen_at != "not-yet-refreshed":
-        st.caption(f"Market data: {gen_at[:10]}")
-    else:
-        st.warning("Market data not yet loaded.")
-
-    # ── Profile summary — pure HTML strip, renders perfectly on all screen sizes ──
     total_pts = sum(e["balance"] for e in profile.values())
     elite_ct  = sum(1 for e in profile.values() if e["status"] not in ["None","Standard"])
     prog_ct   = len(profile)
+
+    # Mock/market status caption
+    if mock_mode:
+        st.caption("Preview mode — sample data")
+    elif gen_at and gen_at != "not-yet-refreshed":
+        st.caption(f"Market data: {gen_at[:10]}")
+    else:
+        st.caption("Market data not yet loaded")
+
+    # User Stats bar
     st.markdown(
-        f'''<div style="display:flex;gap:0;border:1px solid #e5e7eb;border-radius:12px;
-                overflow:hidden;margin-bottom:1rem;background:#fff;">
-          <div style="flex:1;padding:12px 14px;border-right:1px solid #e5e7eb;text-align:center;">
-            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;
-                 letter-spacing:.05em;margin-bottom:4px;">Programs</div>
-            <div style="font-size:22px;font-weight:600;color:#111827;line-height:1;">{prog_ct}</div>
+        f'''<div style="display:flex;gap:0;border:1px solid #e5e7eb;border-radius:10px;
+                overflow:hidden;margin:.4rem 0 .75rem;background:#fff;">
+          <div style="flex:1;padding:10px 8px;border-right:1px solid #e5e7eb;text-align:center;">
+            <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;
+                 letter-spacing:.05em;margin-bottom:3px;">Programs</div>
+            <div style="font-size:20px;font-weight:600;color:#111827;line-height:1;">{prog_ct}</div>
           </div>
-          <div style="flex:1;padding:12px 14px;border-right:1px solid #e5e7eb;text-align:center;">
-            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;
-                 letter-spacing:.05em;margin-bottom:4px;">Total points</div>
-            <div style="font-size:22px;font-weight:600;color:#111827;line-height:1;">{total_pts:,}</div>
+          <div style="flex:1;padding:10px 8px;border-right:1px solid #e5e7eb;text-align:center;">
+            <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;
+                 letter-spacing:.05em;margin-bottom:3px;">Total Points</div>
+            <div style="font-size:20px;font-weight:600;color:#111827;line-height:1;">{total_pts:,}</div>
           </div>
-          <div style="flex:1;padding:12px 14px;text-align:center;">
-            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;
-                 letter-spacing:.05em;margin-bottom:4px;">Elite statuses</div>
-            <div style="font-size:22px;font-weight:600;color:#111827;line-height:1;">{elite_ct}</div>
+          <div style="flex:1;padding:10px 8px;text-align:center;">
+            <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;
+                 letter-spacing:.05em;margin-bottom:3px;">Elite</div>
+            <div style="font-size:20px;font-weight:600;color:#111827;line-height:1;">{elite_ct}</div>
           </div>
         </div>''',
         unsafe_allow_html=True)
-    st.markdown("---")
 
     # ════════════════════════════════════════
     #  SEARCH CARD — pure HTML component
@@ -1254,98 +1252,86 @@ cur_page = st.session_state.get("page", "profile")
 _page_labels = {"profile": "My Profile", "trip": "Plan a Trip", "admin": "Admin"}
 _cur_label   = _page_labels.get(cur_page, "My Profile")
 
-# ── Hamburger nav — JS navigation to avoid Streamlit link interception ──
+# ── Hamburger nav ──
 import streamlit.components.v1 as _nav_components
 
 _nav_html = f"""<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}}
-body{{background:transparent;}}
-.bar{{display:flex;align-items:center;padding:8px 2px 10px;gap:12px;}}
-.hbtn{{background:none;border:1px solid #e5e7eb;border-radius:8px;padding:0;
-       cursor:pointer;width:40px;height:40px;display:flex;flex-direction:column;
+html,body{{background:transparent;overflow:visible;}}
+.bar{{display:flex;align-items:center;padding:6px 0 8px;gap:10px;}}
+.hbtn{{background:#fff;border:1px solid #e5e7eb;border-radius:8px;
+       cursor:pointer;width:38px;height:38px;display:flex;flex-direction:column;
        align-items:center;justify-content:center;gap:4px;flex-shrink:0;}}
-.hbtn:hover{{background:#f9fafb;}}
-.hline{{display:block;width:16px;height:2px;background:#374151;border-radius:1px;}}
-.title-block{{flex:1;}}
+.hbtn:active{{background:#f3f4f6;}}
+.hline{{display:block;width:15px;height:2px;background:#374151;border-radius:1px;}}
+.title-block{{flex:1;line-height:1.2;}}
 .sub{{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;}}
-.pg{{font-size:17px;font-weight:600;color:#111827;}}
-.menu{{display:none;position:absolute;top:60px;left:2px;z-index:9999;
-       background:#fff;border:1px solid #e5e7eb;border-radius:14px;
-       min-width:200px;overflow:hidden;
-       box-shadow:0 8px 24px rgba(0,0,0,.12);}}
-.item{{display:flex;align-items:center;gap:12px;padding:14px 18px;
+.pg{{font-size:16px;font-weight:600;color:#111827;}}
+.menu{{display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;
+       overflow:hidden;margin-top:4px;}}
+.item{{display:flex;align-items:center;gap:12px;padding:13px 16px;
        cursor:pointer;font-size:14px;font-weight:500;color:#374151;
-       border-bottom:1px solid #f3f4f6;}}
+       border-bottom:1px solid #f3f4f6;user-select:none;}}
 .item:last-child{{border-bottom:none;}}
-.item:hover{{background:#f9fafb;}}
-.item.active{{color:#111827;background:#f3f4f6;}}
-.dot{{margin-left:auto;width:7px;height:7px;border-radius:50%;background:#111827;}}
-.wrap{{position:relative;}}
+.item:active{{background:#f3f4f6;}}
+.item.active{{color:#111827;font-weight:600;background:#f9fafb;}}
+.dot{{margin-left:auto;width:7px;height:7px;border-radius:50%;background:#111827;flex-shrink:0;}}
 </style>
 </head><body>
-<div class="wrap">
 <div class="bar">
-  <button class="hbtn" id="hbtn" onclick="toggle()" aria-label="Menu">
-    <span class="hline"></span>
-    <span class="hline"></span>
-    <span class="hline"></span>
+  <button class="hbtn" id="hbtn" onclick="toggle()" aria-label="Open menu">
+    <span class="hline"></span><span class="hline"></span><span class="hline"></span>
   </button>
   <div class="title-block">
     <div class="sub">AI Loyalty Optimizer</div>
-    <div class="pg" id="pg-title">{_cur_label}</div>
+    <div class="pg">{_cur_label}</div>
   </div>
 </div>
 <div class="menu" id="hmenu">
-  <div class="item {'active' if cur_page=='profile' else ''}" onclick="nav('profile')">
-    <span style="font-size:18px;">👤</span> My Profile
-    {'<span class="dot"></span>' if cur_page=='profile' else ''}
+  <div class="item {'active' if cur_page=='profile' else ''}" onclick="go('profile')">
+    <span>👤</span><span>My Profile</span>{'<span class="dot"></span>' if cur_page=='profile' else ''}
   </div>
-  <div class="item {'active' if cur_page=='trip' else ''}" onclick="nav('trip')">
-    <span style="font-size:18px;">✈️</span> Plan a Trip
-    {'<span class="dot"></span>' if cur_page=='trip' else ''}
+  <div class="item {'active' if cur_page=='trip' else ''}" onclick="go('trip')">
+    <span>✈️</span><span>Plan a Trip</span>{'<span class="dot"></span>' if cur_page=='trip' else ''}
   </div>
-  <div class="item {'active' if cur_page=='admin' else ''}" onclick="nav('admin')">
-    <span style="font-size:18px;">⚙️</span> Admin
-    {'<span class="dot"></span>' if cur_page=='admin' else ''}
+  <div class="item {'active' if cur_page=='admin' else ''}" onclick="go('admin')">
+    <span>⚙️</span><span>Admin</span>{'<span class="dot"></span>' if cur_page=='admin' else ''}
   </div>
-</div>
 </div>
 <script>
-function toggle(){{
-  var m=document.getElementById('hmenu');
-  m.style.display=m.style.display==='block'?'none':'block';
+var CLOSED_H = 56, OPEN_H = 56 + 3*50 + 16;
+function setH(h){{
+  document.documentElement.style.height = h+'px';
+  document.body.style.height = h+'px';
+  // Resize the Streamlit iframe
+  var f = window.frameElement;
+  if(f) f.style.height = h+'px';
 }}
-function nav(page){{
-  document.getElementById('hmenu').style.display='none';
-  // Use window.top to navigate the parent Streamlit app
+function toggle(){{
+  var m = document.getElementById('hmenu');
+  var open = m.style.display !== 'block';
+  m.style.display = open ? 'block' : 'none';
+  setH(open ? OPEN_H : CLOSED_H);
+}}
+function go(page){{
+  document.getElementById('hmenu').style.display = 'none';
+  setH(CLOSED_H);
   try{{
-    var url=window.top.location.pathname+'?nav='+page;
-    window.top.location.href=url;
+    window.top.location.href = window.top.location.pathname + '?nav=' + page;
   }}catch(e){{
-    // Cross-origin fallback: post message
     window.parent.postMessage({{streamlit_nav:page}},'*');
   }}
 }}
-document.addEventListener('click',function(e){{
-  var m=document.getElementById('hmenu');
-  var b=document.getElementById('hbtn');
-  if(m&&b&&!b.contains(e.target)&&!m.contains(e.target)){{
-    m.style.display='none';
-  }}
-}});
-// Adjust iframe height
-document.addEventListener('DOMContentLoaded',function(){{
-  window.frameElement && (window.frameElement.style.height='70px');
-}});
+setH(CLOSED_H);
 </script>
 </body></html>"""
 
-_nav_components.html(_nav_html, height=70, scrolling=False)
+_nav_components.html(_nav_html, height=56, scrolling=False)
 
 st.markdown(
-    "<hr style='margin:0 0 1rem;border:none;border-top:1px solid #e8e8e8;'>",
+    "<hr style='margin:2px 0 .75rem;border:none;border-top:1px solid #e8e8e8;'>",
     unsafe_allow_html=True)
 
 
