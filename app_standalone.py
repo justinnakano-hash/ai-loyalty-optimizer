@@ -22,8 +22,16 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+/* ── Hide Streamlit toolbar chrome ── */
+#MainMenu { display: none !important; }
+header[data-testid="stHeader"] { display: none !important; }
+footer { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
+[data-testid="stStatusWidget"] { display: none !important; }
+
 /* ── Base layout ── */
-.block-container { max-width:860px !important; padding-top:1.5rem !important; }
+.block-container { max-width:860px !important; padding-top:1rem !important; }
 
 /* ── Sidebar always hidden — inputs live in main panel ── */
 [data-testid="stSidebar"] { display:none !important; }
