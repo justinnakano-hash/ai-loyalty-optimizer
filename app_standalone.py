@@ -470,40 +470,38 @@ def page_profile():
                             st.rerun()
 
                 else:
-                    # ── View row ──
+                    # ── View row — two-line layout survives narrow screens ──
                     is_active = status not in ["None", "Standard"]
                     pill_bg   = "#e6f4ea" if is_active else "#f0f0f0"
                     pill_col  = "#1e5c2a" if is_active else "#666"
 
-                    # Single st.columns call — info wide, two narrow icon buttons
                     r_info, r_edit, r_del = st.columns([7, 1, 1])
-
                     with r_info:
                         st.markdown(
-                            f'<div style="display:flex;align-items:center;gap:10px;'
-                            f'padding:8px 0;border-bottom:1px solid #f5f5f5;">'
-                            f'<span style="width:9px;height:9px;border-radius:50%;'
+                            f'<div style="padding:8px 0;border-bottom:1px solid #f5f5f5;">'
+                            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">'
+                            f'<span style="width:8px;height:8px;border-radius:50%;'
                             f'background:{color};flex-shrink:0;display:inline-block;"></span>'
                             f'<span style="font-size:13px;font-weight:600;color:#111;'
-                            f'flex:1;">{prog_name}</span>'
-                            f'<span style="font-size:13px;color:#555;'
-                            f'white-space:nowrap;">{bal:,} pts</span>'
-                            f'<span style="display:inline-block;padding:2px 10px;'
+                            f'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;'
+                            f'white-space:nowrap;">{prog_name}</span>'
+                            f'</div>'
+                            f'<div style="display:flex;align-items:center;gap:6px;'
+                            f'padding-left:16px;">'
+                            f'<span style="font-size:12px;color:#555;">{bal:,} pts</span>'
+                            f'<span style="display:inline-block;padding:1px 8px;'
                             f'border-radius:20px;font-size:11px;font-weight:500;'
-                            f'background:{pill_bg};color:{pill_col};'
-                            f'white-space:nowrap;margin-left:4px;">{status}</span>'
-                            f'</div>',
+                            f'background:{pill_bg};color:{pill_col};">{status}</span>'
+                            f'</div></div>',
                             unsafe_allow_html=True)
-
                     with r_edit:
-                        if st.button("Edit", key=f"edit_{prog_name}",
+                        if st.button("✎", key=f"edit_{prog_name}",
                                      use_container_width=True,
                                      help=f"Edit {prog_name}"):
                             st.session_state.editing = prog_name
                             st.rerun()
-
                     with r_del:
-                        if st.button("Remove", key=f"del_{prog_name}",
+                        if st.button("✕", key=f"del_{prog_name}",
                                      use_container_width=True,
                                      help=f"Remove {prog_name}"):
                             del st.session_state.profile[prog_name]
@@ -524,55 +522,40 @@ def page_profile():
             f'</div>',
             unsafe_allow_html=True)
 
-    # ── Add program ──
+    # ── Add program — 2-col grid works on mobile and desktop ──
     st.markdown("---")
     st.markdown("**Add a program**")
 
-    ac1, ac2, ac3, ac4, ac5 = st.columns([1.4, 1.8, 1.4, 1.8, 0.8])
-    with ac1:
-        add_cat = st.selectbox("Category", list(PROGRAMS.keys()),
-                               key="add_cat", label_visibility="collapsed")
     already_added = set(profile.keys())
+
+    r1a, r1b = st.columns(2)
+    with r1a:
+        add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="add_cat")
     available = [p for p in PROGRAMS[add_cat] if p not in already_added]
-    with ac2:
+    with r1b:
         if available:
-            add_prog = st.selectbox("Program", available,
-                                    key="add_prog", label_visibility="collapsed")
+            add_prog = st.selectbox("Program", available, key="add_prog")
         else:
-            st.selectbox("Program", ["— all added —"], disabled=True,
-                         key="add_prog_dis", label_visibility="collapsed")
+            st.selectbox("Program", ["— all added —"], disabled=True, key="add_prog_dis")
             add_prog = None
-    with ac3:
-        add_bal = st.number_input("Balance (pts)", min_value=0, step=1000, value=0,
-                                  key="add_bal", label_visibility="collapsed")
-    with ac4:
+
+    r2a, r2b = st.columns(2)
+    with r2a:
+        add_bal = st.number_input("Balance (pts)", min_value=0, step=1000,
+                                  value=0, key="add_bal")
+    with r2b:
         if add_prog:
             add_status = st.selectbox(
-                "Status", PROGRAMS[add_cat][add_prog]["statuses"],
-                key="add_status", label_visibility="collapsed")
+                "Status", PROGRAMS[add_cat][add_prog]["statuses"], key="add_status")
         else:
-            st.selectbox("Status", ["—"], disabled=True,
-                         key="add_status_dis", label_visibility="collapsed")
+            st.selectbox("Status", ["—"], disabled=True, key="add_status_dis")
             add_status = None
-    with ac5:
-        # Use empty label + markdown spacer to align button with inputs
-        st.markdown("<div style='margin-top:4px;'>", unsafe_allow_html=True)
-        if st.button("+ Add", use_container_width=True, type="primary",
-                     disabled=not add_prog, key="add_btn"):
-            st.session_state.profile[add_prog] = {
-                "balance": add_bal, "status": add_status}
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
 
-    # Column hint labels
-    st.markdown(
-        '<div style="display:flex;gap:0;margin-top:.3rem;">' 
-        '<span style="font-size:11px;color:#bbb;flex:1.4;">Category</span>'
-        '<span style="font-size:11px;color:#bbb;flex:1.8;">Program</span>'
-        '<span style="font-size:11px;color:#bbb;flex:1.4;">Balance</span>'
-        '<span style="font-size:11px;color:#bbb;flex:1.8;">Status</span>'
-        '</div>',
-        unsafe_allow_html=True)
+    if st.button("+ Add program", use_container_width=True, type="primary",
+                 disabled=not add_prog, key="add_btn"):
+        st.session_state.profile[add_prog] = {
+            "balance": add_bal, "status": add_status}
+        st.rerun()
 
 
 # ─────────────────────────────────────────────
@@ -606,13 +589,30 @@ def page_trip():
     else:
         st.warning("Market data not yet loaded.")
 
-    # ── Profile summary ──
+    # ── Profile summary — pure HTML strip, renders perfectly on all screen sizes ──
     total_pts = sum(e["balance"] for e in profile.values())
     elite_ct  = sum(1 for e in profile.values() if e["status"] not in ["None","Standard"])
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Programs", len(profile))
-    m2.metric("Total points", f"{total_pts:,}")
-    m3.metric("Elite statuses", elite_ct)
+    prog_ct   = len(profile)
+    st.markdown(
+        f'''<div style="display:flex;gap:0;border:1px solid #e5e7eb;border-radius:12px;
+                overflow:hidden;margin-bottom:1rem;background:#fff;">
+          <div style="flex:1;padding:12px 14px;border-right:1px solid #e5e7eb;text-align:center;">
+            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;
+                 letter-spacing:.05em;margin-bottom:4px;">Programs</div>
+            <div style="font-size:22px;font-weight:600;color:#111827;line-height:1;">{prog_ct}</div>
+          </div>
+          <div style="flex:1;padding:12px 14px;border-right:1px solid #e5e7eb;text-align:center;">
+            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;
+                 letter-spacing:.05em;margin-bottom:4px;">Total points</div>
+            <div style="font-size:22px;font-weight:600;color:#111827;line-height:1;">{total_pts:,}</div>
+          </div>
+          <div style="flex:1;padding:12px 14px;text-align:center;">
+            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;
+                 letter-spacing:.05em;margin-bottom:4px;">Elite statuses</div>
+            <div style="font-size:22px;font-weight:600;color:#111827;line-height:1;">{elite_ct}</div>
+          </div>
+        </div>''',
+        unsafe_allow_html=True)
     st.markdown("---")
 
     # ════════════════════════════════════════
