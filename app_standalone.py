@@ -17,6 +17,7 @@ st.set_page_config(
     page_title="AI Loyalty Optimizer",
     page_icon="✈️",
     layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
 st.markdown("""
@@ -24,10 +25,10 @@ st.markdown("""
 /* ── Base layout ── */
 .block-container { max-width:860px !important; padding-top:1.5rem !important; }
 
-/* ── Hide sidebar entirely on mobile — inputs live in main panel ── */
+/* ── Sidebar always hidden — inputs live in main panel ── */
+[data-testid="stSidebar"] { display:none !important; }
+[data-testid="collapsedControl"] { display:none !important; }
 @media (max-width:768px) {
-    [data-testid="stSidebar"] { display:none !important; }
-    [data-testid="collapsedControl"] { display:none !important; }
     .block-container { padding-left:1rem !important; padding-right:1rem !important; padding-top:0.75rem !important; }
     h1 { font-size:1.4rem !important; }
 }
@@ -123,24 +124,16 @@ st.markdown("""
     .cvp-grid { flex-direction:column; }
 }
 
-/* ── Mobile-only expander inputs — hidden on desktop ── */
-.mobile-inputs { display:none; }
-@media (max-width:768px) {
-    .mobile-inputs { display:block; }
-}
-
-/* ── Nav title font scaling ── */
+/* ── Nav and button sizing on mobile ── */
 @media (max-width:480px) {
     h1 { font-size:1.2rem !important; margin-bottom:.25rem !important; }
-    .stButton button { min-height:40px !important; font-size:13px !important; }
+    .stButton button { min-height:44px !important; font-size:14px !important; }
 }
 
-/* ── Ensure expander headers are touch-friendly ── */
-@media (max-width:768px) {
-    [data-testid="stExpander"] summary {
-        padding-top: 14px !important;
-        padding-bottom: 14px !important;
-        font-size: 14px !important;
+/* ── Two-col inputs stack to single col on narrow screens ── */
+@media (max-width:480px) {
+    [data-testid="stHorizontalBlock"] > div {
+        min-width:100% !important;
     }
 }
 </style>
@@ -471,70 +464,79 @@ def page_profile():
 def page_trip():
     profile = st.session_state.profile
 
-    # ── API key comes from secrets, never from user input ──
+    # API key from secrets only
     def get_api_key():
-        try:
-            return st.secrets["admin"]["api_key"]
-        except (KeyError, FileNotFoundError):
-            return None
-
+        try:    return st.secrets["admin"]["api_key"]
+        except: return None
     api_key = get_api_key()
 
-    # ── Mock mode is admin-controlled only ──
+    # Mock mode — admin override or auto based on key presence
     _override = st.session_state.get("mock_override", None)
-    # Default to True (mock on) if no admin override and no API key configured
-    if _override is not None:
-        mock_mode = _override
+    mock_mode = _override if _override is not None else (api_key is None)
+
+    st.markdown("## Plan a Trip")
+
+    if not profile:
+        st.warning("Your loyalty profile is empty. Go to **My Profile** and add your programs first.")
+        return
+
+    # ── Status strip ──
+    gen_at = get_metadata().get("generated_at", "")
+    if mock_mode:
+        st.info("Preview mode — showing sample data.")
+    elif gen_at and gen_at != "not-yet-refreshed":
+        st.caption(f"Market data: {gen_at[:10]}")
     else:
-        mock_mode = api_key is None  # auto mock-on if no key set up yet
+        st.warning("Market data not yet loaded.")
 
-    # ── Input state — computed outside sidebar/expander so both paths set same vars ──
-    def _build_inputs():
-        """Render all trip inputs. Called inside sidebar on desktop, expanders on mobile."""
+    # ── Profile summary ──
+    total_pts = sum(e["balance"] for e in profile.values())
+    elite_ct  = sum(1 for e in profile.values() if e["status"] not in ["None","Standard"])
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Programs", len(profile))
+    m2.metric("Total points", f"{total_pts:,}")
+    m3.metric("Elite statuses", elite_ct)
+    st.markdown("---")
 
-        # Status strip
-        gen_at = get_metadata().get("generated_at", "")
-        if mock_mode:
-            st.info("Preview mode — showing sample data.")
-        elif gen_at and gen_at != "not-yet-refreshed":
-            st.caption(f"Market data: {gen_at[:10]}")
-        else:
-            st.warning("Market data not yet loaded.")
+    # ════════════════════════════════════════
+    #  TRIP INPUTS — all in main panel
+    # ════════════════════════════════════════
 
-        st.divider()
+    # ── Scope ──
+    search_scope = st.radio(
+        "What are you planning?",
+        ["Flight + Hotel", "Flight only", "Hotel only"],
+        horizontal=True, key="search_scope")
+    include_flight = search_scope in ["Flight + Hotel", "Flight only"]
+    include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
 
-        # Scope
-        st.markdown("### What are you planning?")
-        search_scope = st.radio(
-            "Optimize for",
-            ["Flight + Hotel", "Flight only", "Hotel only"],
-            horizontal=True, key="search_scope")
-        include_flight = search_scope in ["Flight + Hotel", "Flight only"]
-        include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
-        st.divider()
+    st.markdown("---")
 
-        # Flight
-        origin_city = origin_code = dest_city = dest_code = ""
-        cabin = "Economy"
-        depart_date = date.today()
-        return_date = None
-        flight_nights = None
-        is_roundtrip = False
+    # ── Flight inputs ──
+    origin_city = origin_code = dest_city = dest_code = ""
+    cabin = "Economy"
+    depart_date = date.today()
+    return_date = None
+    flight_nights = None
+    is_roundtrip = False
 
-        if include_flight:
-            st.markdown("### Flight")
-            trip_type    = st.radio("Trip type", ["Round trip", "One way"],
-                                    horizontal=True, key="trip_type")
-            is_roundtrip = trip_type == "Round trip"
+    if include_flight:
+        st.markdown("**Flight**")
 
+        trip_type = st.radio("Trip type", ["Round trip", "One way"],
+                             horizontal=True, key="trip_type")
+        is_roundtrip = trip_type == "Round trip"
+
+        fc1, fc2 = st.columns(2)
+        with fc1:
             origin_label = st.selectbox(
                 "Flying from", AIRPORT_LABELS,
                 index=AIRPORT_LABELS.index("San Francisco, CA — SFO (SFO)"),
                 key="origin_sel")
-            origin_code  = AIRPORTS[origin_label]
-            origin_city  = origin_label.split(" —")[0]
+            origin_code = AIRPORTS[origin_label]
+            origin_city = origin_label.split(" —")[0]
             st.caption(f"Airport: **{origin_code}**")
-
+        with fc2:
             dest_label = st.selectbox(
                 "Flying to", AIRPORT_LABELS,
                 index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
@@ -543,775 +545,103 @@ def page_trip():
             dest_city = dest_label.split(" —")[0]
             st.caption(f"Airport: **{dest_code}**")
 
-            cabin = st.selectbox("Cabin class",
-                                 ["Economy", "Premium Economy", "Business", "First"],
-                                 key="cabin_sel")
+        cabin = st.selectbox("Cabin class",
+                             ["Economy", "Premium Economy", "Business", "First"],
+                             key="cabin_sel")
 
-            st.markdown("**Departure date**")
-            depart_date = st.date_input(
-                "Departure", value=date(2026, 6, 10), min_value=date.today(),
-                label_visibility="collapsed", key="depart_date")
-
-            if is_roundtrip:
-                st.markdown("**Return date**")
+        if is_roundtrip:
+            dc1, dc2 = st.columns(2)
+            with dc1:
+                depart_date = st.date_input(
+                    "Departure date", value=date(2026, 6, 10),
+                    min_value=date.today(), key="depart_date")
+            with dc2:
                 return_date = st.date_input(
-                    "Return",
-                    value=depart_date + timedelta(days=10),
+                    "Return date",
+                    value=date(2026, 6, 10) + timedelta(days=10),
                     min_value=depart_date + timedelta(days=1),
-                    label_visibility="collapsed", key="return_date")
-                flight_nights = (return_date - depart_date).days
-                st.caption(f"{flight_nights} nights away")
+                    key="return_date")
+            flight_nights = (return_date - depart_date).days
+            st.caption(f"{flight_nights} nights away")
+        else:
+            depart_date = st.date_input(
+                "Departure date", value=date(2026, 6, 10),
+                min_value=date.today(), key="depart_date_ow")
 
-        st.divider()
+    # ── Hotel inputs ──
+    hotel_style  = "Standard"
+    hotel_nights = None
 
-        # Hotel
-        hotel_style  = "Standard"
-        hotel_nights = None
+    if include_hotel:
+        if include_flight:
+            st.markdown("---")
+        st.markdown("**Hotel**")
 
-        if include_hotel:
-            st.markdown("### Hotel")
-            hotel_style = st.selectbox("Hotel style",
-                                       ["Budget", "Standard", "Luxury"],
-                                       key="hotel_style_sel")
+        if not include_flight:
+            dest_label = st.selectbox(
+                "Destination city", AIRPORT_LABELS,
+                index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
+                key="hotel_dest_sel")
+            dest_city = dest_label.split(" —")[0]
+            dest_code = AIRPORTS[dest_label]
 
-            if include_flight and is_roundtrip:
-                hotel_nights = flight_nights
-                st.caption(f"Staying **{hotel_nights} nights** (matches your flight dates)")
-            elif include_flight and not is_roundtrip:
-                hotel_nights = st.number_input(
-                    "Nights", min_value=1, max_value=60, value=5,
-                    key="hotel_nights_input")
-            else:
-                # Hotel only — own dates
-                if not include_flight:
-                    dest_label = st.selectbox(
-                        "Destination city", AIRPORT_LABELS,
-                        index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
-                        key="hotel_dest_sel")
-                    dest_city  = dest_label.split(" —")[0]
-                    dest_code  = AIRPORTS[dest_label]
-                st.markdown("**Check-in date**")
+        hotel_style = st.selectbox("Hotel style",
+                                   ["Budget", "Standard", "Luxury"],
+                                   key="hotel_style_sel")
+
+        if include_flight and is_roundtrip and flight_nights:
+            hotel_nights = flight_nights
+            st.caption(f"Staying **{hotel_nights} nights** — matches your flight dates")
+        elif include_flight and not is_roundtrip:
+            hotel_nights = st.number_input(
+                "Nights", min_value=1, max_value=60, value=5,
+                key="hotel_nights_input")
+        else:
+            hc1, hc2 = st.columns(2)
+            with hc1:
                 checkin_date = st.date_input(
-                    "Check-in", value=date(2026, 6, 10), min_value=date.today(),
-                    label_visibility="collapsed", key="checkin_date")
-                st.markdown("**Check-out date**")
+                    "Check-in", value=date(2026, 6, 10),
+                    min_value=date.today(), key="checkin_date")
+            with hc2:
                 checkout_date = st.date_input(
                     "Check-out",
-                    value=checkin_date + timedelta(days=5),
+                    value=date(2026, 6, 10) + timedelta(days=5),
                     min_value=checkin_date + timedelta(days=1),
-                    label_visibility="collapsed", key="checkout_date")
-                hotel_nights = (checkout_date - checkin_date).days
-                depart_date  = checkin_date
-                st.caption(f"{hotel_nights} nights")
+                    key="checkout_date")
+            hotel_nights = (checkout_date - checkin_date).days
+            depart_date  = checkin_date
+            st.caption(f"{hotel_nights} nights")
 
-        st.divider()
-
-        # Priority
-        val_exp = st.slider("Value ← · → Experience", 1, 10, 5,
-                            help="1 = max points value  ·  10 = max experience quality")
-
-        # Date summary string
-        if include_flight and is_roundtrip and return_date:
-            dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
-        elif include_flight:
-            dates_str = f"{depart_date.strftime('%b %d, %Y')} (one way)"
-        elif include_hotel and hotel_nights:
-            checkout = depart_date + timedelta(days=hotel_nights)
-            dates_str = f"{depart_date.strftime('%b %d')} – {checkout.strftime('%b %d, %Y')}"
-        else:
-            dates_str = ""
-
-        nights = hotel_nights if hotel_nights else (flight_nights or 0)
-
-        return dict(
-            include_flight=include_flight, include_hotel=include_hotel,
-            origin_city=origin_city, origin_code=origin_code,
-            dest_city=dest_city, dest_code=dest_code,
-            cabin=cabin, hotel_style=hotel_style,
-            depart_date=depart_date, return_date=return_date,
-            is_roundtrip=is_roundtrip,
-            flight_nights=flight_nights, hotel_nights=hotel_nights,
-            val_exp=val_exp, dates_str=dates_str, nights=nights,
-        )
-
-    # ── Desktop: inputs in sidebar ──
-    with st.sidebar:
-        inp = _build_inputs()
-        run = st.button("Find My Best Trip", type="primary", use_container_width=True)
-
-    # Unpack into local vars (used by build_data / build_prompt / render)
-    include_flight = inp["include_flight"]; include_hotel = inp["include_hotel"]
-    origin_city    = inp["origin_city"];    origin_code   = inp["origin_code"]
-    dest_city      = inp["dest_city"];      dest_code     = inp["dest_code"]
-    cabin          = inp["cabin"];          hotel_style   = inp["hotel_style"]
-    depart_date    = inp["depart_date"];    return_date   = inp["return_date"]
-    is_roundtrip   = inp["is_roundtrip"]
-    flight_nights  = inp["flight_nights"];  hotel_nights  = inp["hotel_nights"]
-    val_exp        = inp["val_exp"];        dates_str     = inp["dates_str"]
-    nights         = inp["nights"]
-    # ── Main panel ──
-    st.markdown("## Plan a Trip")
-
-    if not profile:
-        st.warning("Your loyalty profile is empty. Go to **My Profile** and add your programs first.")
-        return
-
-    # ── Mobile-only: trip inputs in expanders ──
-    # On desktop these are hidden (sidebar handles it). On mobile, sidebar is hidden via CSS
-    # and these expanders become the only input surface.
-    st.markdown(
-        '<div class="mobile-inputs">',
-        unsafe_allow_html=True)
-
-    # Scope expander
-    scope_label = st.session_state.get("search_scope", "Flight + Hotel")
-    with st.expander(f"✈ What are you planning? · **{scope_label}**", expanded=False):
-        mob_scope = st.radio(
-            "Optimize for",
-            ["Flight + Hotel", "Flight only", "Hotel only"],
-            horizontal=True, key="mob_scope",
-            index=["Flight + Hotel","Flight only","Hotel only"].index(
-                st.session_state.get("search_scope","Flight + Hotel")))
-        # Sync with sidebar key so _build_inputs() picks it up
-        st.session_state["search_scope"] = mob_scope
-
-    mob_include_flight = st.session_state["search_scope"] in ["Flight + Hotel", "Flight only"]
-    mob_include_hotel  = st.session_state["search_scope"] in ["Flight + Hotel", "Hotel only"]
-
-    # Route expander
-    orig_lbl  = st.session_state.get("origin_sel", "San Francisco, CA — SFO (SFO)")
-    dest_lbl  = st.session_state.get("dest_sel",   "Tokyo — Narita (NRT)")
-    orig_code = AIRPORTS.get(orig_lbl, "SFO")
-    dst_code  = AIRPORTS.get(dest_lbl, "NRT")
-    route_summary = f"{orig_code} → {dst_code}" if mob_include_flight else dest_lbl.split(' —')[0]
-
-    if mob_include_flight:
-        with st.expander(f"🛫 Route · **{route_summary}**", expanded=False):
-            mc1, mc2 = st.columns(2)
-            with mc1:
-                mob_orig = st.selectbox("From", AIRPORT_LABELS,
-                    index=AIRPORT_LABELS.index(orig_lbl), key="mob_origin_sel",
-                    label_visibility="visible")
-                st.session_state["origin_sel"] = mob_orig
-            with mc2:
-                mob_dest = st.selectbox("To", AIRPORT_LABELS,
-                    index=AIRPORT_LABELS.index(dest_lbl), key="mob_dest_sel",
-                    label_visibility="visible")
-                st.session_state["dest_sel"] = mob_dest
-
-            mob_tt = st.radio("Trip type", ["Round trip","One way"],
-                              horizontal=True, key="mob_trip_type")
-            st.session_state["trip_type"] = mob_tt
-
-            st.markdown("**Cabin class**")
-            mob_cab = st.selectbox("Cabin", ["Economy","Premium Economy","Business","First"],
-                                   key="mob_cabin_sel", label_visibility="collapsed")
-            st.session_state["cabin_sel"] = mob_cab
-
-    # Dates expander
-    dep = st.session_state.get("depart_date", date(2026,6,10))
-    if not isinstance(dep, date): dep = date(2026,6,10)
-    is_rt = st.session_state.get("trip_type","Round trip") == "Round trip"
-    if mob_include_flight and is_rt:
-        ret = st.session_state.get("return_date", dep + timedelta(days=10))
-        if not isinstance(ret, date): ret = dep + timedelta(days=10)
-        dates_disp = f"{dep.strftime('%b %d')} – {ret.strftime('%b %d')}"
-    elif mob_include_flight:
-        dates_disp = dep.strftime("%b %d, %Y") + " (one way)"
-    else:
-        dates_disp = dep.strftime("%b %d, %Y")
-
-    if mob_include_flight:
-        with st.expander(f"📅 Dates · **{dates_disp}**", expanded=False):
-            mob_dep = st.date_input("Departure", value=dep,
-                                    min_value=date.today(), key="mob_depart_date")
-            st.session_state["depart_date"] = mob_dep
-            if is_rt:
-                mob_ret = st.date_input("Return",
-                    value=mob_dep + timedelta(days=10),
-                    min_value=mob_dep + timedelta(days=1),
-                    key="mob_return_date")
-                st.session_state["return_date"] = mob_ret
-
-    # Hotel dates (hotel-only)
-    if mob_include_hotel and not mob_include_flight:
-        ci = st.session_state.get("checkin_date", date(2026,6,10))
-        if not isinstance(ci, date): ci = date(2026,6,10)
-        with st.expander(f"🏨 Hotel dates · **{ci.strftime('%b %d')}**", expanded=False):
-            mob_dest_hotel = st.selectbox("Destination city", AIRPORT_LABELS,
-                index=AIRPORT_LABELS.index(st.session_state.get("dest_sel","Tokyo — Narita (NRT)")),
-                key="mob_hotel_dest")
-            st.session_state["dest_sel"] = mob_dest_hotel
-            mob_ci = st.date_input("Check-in", value=ci, min_value=date.today(),
-                                   key="mob_checkin_date")
-            mob_co = st.date_input("Check-out",
-                value=mob_ci + timedelta(days=5),
-                min_value=mob_ci + timedelta(days=1),
-                key="mob_checkout_date")
-            st.session_state["checkin_date"] = mob_ci
-            st.session_state["checkout_date"] = mob_co
-
-    # Preferences expander
-    cab_disp = st.session_state.get("cabin_sel", "Economy")
-    hot_disp = st.session_state.get("hotel_style_sel", "Standard")
-    pref_disp = " · ".join(filter(None, [
-        cab_disp if mob_include_flight else "",
-        hot_disp if mob_include_hotel  else ""]))
-    with st.expander(f"⚙️ Preferences · **{pref_disp or 'not set'}**", expanded=False):
-        if mob_include_flight:
-            mob_cab2 = st.selectbox("Cabin class",
-                ["Economy","Premium Economy","Business","First"],
-                index=["Economy","Premium Economy","Business","First"].index(cab_disp),
-                key="mob_cabin_pref")
-            st.session_state["cabin_sel"] = mob_cab2
-        if mob_include_hotel:
-            mob_hs = st.selectbox("Hotel style", ["Budget","Standard","Luxury"],
-                index=["Budget","Standard","Luxury"].index(hot_disp),
-                key="mob_hotel_pref")
-            st.session_state["hotel_style_sel"] = mob_hs
-        st.slider("Value ← · → Experience", 1, 10, 5, key="mob_val_exp")
-
-    # Mobile search button — full width, prominent
-    mob_run = st.button("Find My Best Trip", type="primary",
-                        use_container_width=True, key="mob_run_btn")
-
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ── Preferences ──
     st.markdown("---")
+    val_exp = st.slider("Value  ←  ·  →  Experience", 1, 10, 5,
+                        help="1 = max points value  ·  10 = max experience quality")
 
-    # Either button triggers search
-    run = run or mob_run
+    # ── Search button ──
+    st.markdown("<br>", unsafe_allow_html=True)
+    run = st.button("Find My Best Trip", type="primary",
+                    use_container_width=True, key="run_btn")
 
-    # Profile summary strip
-    total_pts = sum(e["balance"] for e in profile.values())
-    elite_ct  = sum(1 for e in profile.values() if e["status"] not in ["None","Standard"])
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Programs loaded", len(profile))
-    m2.metric("Total points",    f"{total_pts:,}")
-    m3.metric("Elite statuses",  elite_ct)
+    # ── Date summary string ──
+    if include_flight and is_roundtrip and return_date:
+        dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
+    elif include_flight:
+        dates_str = f"{depart_date.strftime('%b %d, %Y')} (one way)"
+    elif include_hotel and hotel_nights:
+        checkout = depart_date + timedelta(days=hotel_nights)
+        dates_str = f"{depart_date.strftime('%b %d')} – {checkout.strftime('%b %d, %Y')}"
+    else:
+        dates_str = ""
+
+    nights = hotel_nights if hotel_nights else (flight_nights or 0)
+
     st.markdown("---")
 
     if not run:
-        st.info("Choose your trip details above, then tap **Find My Best Trip**.")
+        st.info("Set your trip details above and tap **Find My Best Trip**.")
         return
 
-    # ── Build API payload ──
-    def build_data():
-        cc, al, ht, ast, hst = {}, {}, {}, {}, {}
-        for pn, entry in profile.items():
-            bal = entry["balance"]; s = entry["status"]; cat = get_cat(pn)
-            if cat == "Credit Cards": cc[pn] = bal
-            elif cat == "Airlines":
-                al[pn] = bal
-                if s != "None": ast[pn] = s
-            elif cat == "Hotels":
-                ht[pn] = bal
-                if s != "None": hst[pn] = s
-        return {
-            "points":      {"credit_cards": cc, "airline_miles": al, "hotel_points": ht},
-            "status":      {"airlines": ast, "hotels": hst},
-            "trip":        {
-                "origin":        f"{origin_city} ({origin_code})" if origin_city else "",
-                "destination":   f"{dest_city} ({dest_code})" if dest_city else "",
-                "dates":         dates_str,
-                "nights":        int(nights) if nights else 0,
-                "trip_type":     "Round trip" if is_roundtrip else "One way",
-                "include_flight": include_flight,
-                "include_hotel":  include_hotel,
-            },
-            "preferences": {
-                "cabin":               cabin if include_flight else "N/A",
-                "hotel_style":         hotel_style if include_hotel else "N/A",
-                "value_vs_experience": val_exp,
-            },
-        }
 
-    SYSTEM = ("You are an expert travel strategist. "
-              "Return ONLY valid JSON, no markdown, no extra text.")
-
-    def build_prompt(d):
-        scope = []
-        if include_flight: scope.append("flight")
-        if include_hotel:  scope.append("hotel")
-        scope_str = " and ".join(scope)
-
-        # Pull relevant metadata to inject — keeps prompt focused
-        cpp_data    = json.dumps(get_metadata().get("point_valuations", {}),  indent=2)
-        xfr_data    = json.dumps(get_metadata().get("transfer_partners", {}), indent=2)
-        promos      = json.dumps(get_metadata().get("promotions", []),         indent=2)
-        benchmarks  = json.dumps(get_metadata().get("cash_rate_benchmarks", {}), indent=2)
-        thresholds  = json.dumps(get_metadata().get("cpp_thresholds", {}),    indent=2)
-
-        return f"""Generate the optimal {scope_str} loyalty strategy. Use the metadata below to calculate
-exact cent-per-point values, identify transfer paths, flag promotions, and decide if cash beats points.
-
-USER PROFILE & TRIP:
-{json.dumps(d, indent=2)}
-
-CURRENT POINT VALUATIONS (cpp = cents per point at best redemption):
-{cpp_data}
-
-TRANSFER PARTNERS & RATIOS:
-{xfr_data}
-
-ACTIVE PROMOTIONS:
-{promos}
-
-CASH RATE BENCHMARKS:
-{benchmarks}
-
-CPP DECISION THRESHOLDS:
-{thresholds}
-
-Return EXACTLY this JSON (no markdown, no extra text):
-{{
-  "plain_english": "One friendly sentence summarising the strategy — no jargon",
-  "route_display": {{"origin": "{origin_city}", "destination": "{dest_city}"}},
-  "hero": {{
-    "flight_pts": "e.g. 60,000 Chase pts",
-    "hotel_nights": "e.g. 4 nights paid, 5th free",
-    "cash": "e.g. ~$150"
-  }},
-  "points_bars": [{{"name":"","pct":80,"color":"#378ADD","label":"60k → flight"}}],
-  "flight": {{"airline":"","book_via":"","points":"","cash_fees":""}},
-  "hotel":  {{"name":"","book_via":"","points":"","fifth_night":"Free or N/A"}},
-  "perks": ["plain-English perk"],
-  "booking_steps": [{{"title":"Short action","desc":"Plain English step"}}],
-  "alternatives": [{{"name":"","desc":"","trade":""}}],
-  "card": {{"name":"","bonus":"","why":""}},
-  "status": {{"airline":"","hotel":""}},
-  "confidence": "",
-  "points_analysis": {{
-    "flight": {{
-      "status": "covered|shortfall|not_applicable",
-      "required_pts": 0,
-      "program_recommended": "",
-      "cpp_achieved": 0.0,
-      "cpp_alternatives": [
-        {{"label":"","cpp":0.0}}
-      ],
-      "bars": [
-        {{"name":"","have":0,"need":0,"pct":0,"color":"","surplus_or_gap":""}}
-      ],
-      "transfer_options": [
-        {{"from_program":"","to_program":"","ratio":"","have":0,"need":0,"feasible":true}}
-      ]
-    }},
-    "hotel": {{
-      "status": "covered|shortfall|not_applicable",
-      "required_pts": 0,
-      "program_recommended": "",
-      "cpp_achieved": 0.0,
-      "cpp_alternatives": [
-        {{"label":"","cpp":0.0}}
-      ],
-      "bars": [
-        {{"name":"","have":0,"need":0,"pct":0,"color":"","surplus_or_gap":""}}
-      ],
-      "transfer_options": [
-        {{"from_program":"","to_program":"","ratio":"","have":0,"need":0,"feasible":true}}
-      ],
-      "tip": "Actionable suggestion if shortfall exists"
-    }}
-  }},
-  "cash_vs_points": {{
-    "recommendation": "points|cash|similar",
-    "points_option": {{
-      "out_of_pocket": "e.g. ~$150",
-      "pts_used": 0,
-      "pts_value_usd": "e.g. ~$1,560",
-      "cpp": 0.0
-    }},
-    "cash_option": {{
-      "total_cost": "e.g. $1,240",
-      "pts_saved": 0,
-      "pts_saved_value": "e.g. ~$1,560",
-      "net_vs_points": "e.g. +$320 better"
-    }},
-    "verdict": "Plain English explanation of which is better and why"
-  }},
-  "promotions": [
-    {{
-      "title": "",
-      "description": "",
-      "type": "transfer_bonus|sale_fare|earn_bonus|status_promo",
-      "tags": [],
-      "expires": "",
-      "relevant_to_this_trip": true
-    }}
-  ]
-}}
-Use city names not airport codes. Keep everything friendly. Do NOT assume real-time seat availability.
-Use the metadata CPP values and thresholds to make the cash vs points recommendation mathematically."""
-
-    def call_claude(key, data):
-        client = anthropic.Anthropic(api_key=key)
-        msg = client.messages.create(
-            model="claude-opus-4-5", max_tokens=2000, system=SYSTEM,
-            messages=[{"role": "user", "content": build_prompt(data)}])
-        raw = msg.content[0].text.strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        return json.loads(raw)
-
-    # ── Render results ──
-    def render(r, is_mock=False):
-        if is_mock:
-            st.markdown(
-                '<div class="mock-banner">Preview mode — showing sample data.</div>',
-                unsafe_allow_html=True)
-
-        st.markdown(
-            f'<div class="plain-english"><b>In plain English:</b> '
-            f'{r.get("plain_english","")}</div>',
-            unsafe_allow_html=True)
-
-        rd = r.get("route_display", {}); hero = r.get("hero", {})
-
-        # Build dynamic tagline and hero stats based on scope
-        tagline_parts = []
-        if include_flight:
-            tagline_parts.append(f"{cabin} class")
-            if is_roundtrip:
-                tagline_parts.append("round trip")
-            else:
-                tagline_parts.append("one way")
-        if nights:
-            tagline_parts.append(f"{int(nights)} nights")
-        tagline_parts.append(dates_str)
-        tagline = " &middot; ".join(tagline_parts)
-
-        # Route display
-        if include_flight:
-            route_html = (
-                f'<span>{rd.get("origin", origin_city)}</span>'
-                f'<div class="route-line"></div>&rarr;'
-                + ('<div class="route-line"></div>&larr;' if is_roundtrip else '')
-                + ('<div class="route-line"></div>' if not is_roundtrip else '')
-                + f'<span>{rd.get("destination", dest_city)}</span>'
-            )
-        else:
-            route_html = f'<span>Hotel in {rd.get("destination", dest_city)}</span>'
-
-        # Hero stats — only show relevant ones
-        stats_html = ""
-        if include_flight:
-            stats_html += (
-                f'<div class="hero-stat">'
-                f'<p class="hs-label">Flight</p>'
-                f'<p class="hs-val">{hero.get("flight_pts","—")}</p>'
-                f'<p class="hs-sub">points used</p></div>'
-            )
-        if include_hotel:
-            stats_html += (
-                f'<div class="hero-stat">'
-                f'<p class="hs-label">Hotel</p>'
-                f'<p class="hs-val">{hero.get("hotel_nights","—")}</p>'
-                f'<p class="hs-sub">award nights</p></div>'
-            )
-        stats_html += (
-            f'<div class="hero-stat">'
-            f'<p class="hs-label">Cash needed</p>'
-            f'<p class="hs-val">{hero.get("cash","—")}</p>'
-            f'<p class="hs-sub">taxes &amp; fees</p></div>'
-        )
-
-        st.markdown(
-            f'<div class="hero"><div class="hero-top">'
-            f'<div class="route">{route_html}</div>'
-            f'<p class="tagline">{tagline}</p>'
-            f'</div><div class="hero-bottom">{stats_html}</div></div>',
-            unsafe_allow_html=True)
-
-        bars = r.get("points_bars", [])
-        if bars:
-            bh = "".join(
-                f'<div class="pts-row">'
-                f'<span class="pts-name">{b["name"]}</span>'
-                f'<div class="pts-track"><div class="pts-fill" '
-                f'style="width:{b["pct"]}%;background:{b["color"]};"></div></div>'
-                f'<span class="pts-amt">{b["label"]}</span></div>'
-                for b in bars)
-            st.markdown(
-                f'<div class="pts-wrap"><p class="pts-title">Your points at a glance</p>{bh}'
-                f'<div class="legend">'
-                f'<span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>Flight</span>'
-                f'<span class="legend-item"><span class="legend-dot" style="background:#1D9E75;"></span>Hotel</span>'
-                f'<span class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>Shortfall</span>'
-                f'</div></div>', unsafe_allow_html=True)
-
-        f = r.get("flight", {}); h = r.get("hotel", {})
-        cards = []
-        if include_flight:
-            cards.append(
-                f'<div class="res-card"><p class="card-head">Flight</p>'
-                f'<div class="dr"><span class="dr-l">Airline</span><span class="dr-v">{f.get("airline","—")}</span></div>'
-                f'<div class="dr"><span class="dr-l">Book through</span><span class="dr-v">{f.get("book_via","—")}</span></div>'
-                f'<div class="dr"><span class="dr-l">Points used</span><span class="dr-v">{f.get("points","—")}</span></div>'
-                f'<div class="dr"><span class="dr-l">Cash fees</span><span class="dr-v">{f.get("cash_fees","—")}</span></div>'
-                f'</div>'
-            )
-        if include_hotel:
-            cards.append(
-                f'<div class="res-card"><p class="card-head">Hotel</p>'
-                f'<div class="dr"><span class="dr-l">Property</span><span class="dr-v">{h.get("name","—")}</span></div>'
-                f'<div class="dr"><span class="dr-l">Book through</span><span class="dr-v">{h.get("book_via","—")}</span></div>'
-                f'<div class="dr"><span class="dr-l">Points used</span><span class="dr-v">{h.get("points","—")}</span></div>'
-                f'<div class="dr"><span class="dr-l">5th night</span><span class="dr-v">{h.get("fifth_night","—")}</span></div>'
-                f'</div>'
-            )
-        if len(cards) == 2:
-            # Stack on mobile via CSS, side-by-side on desktop
-            st.markdown(
-                f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem;margin-bottom:1rem;">' + "".join(cards) + '</div>',
-                unsafe_allow_html=True)
-        elif len(cards) == 1:
-            st.markdown(cards[0], unsafe_allow_html=True)
-
-        perks = r.get("perks", [])
-        if perks:
-            chips = "".join(f'<div class="chip">&#10003; {p}</div>' for p in perks)
-            st.markdown(f'<div class="perks-row">{chips}</div>', unsafe_allow_html=True)
-
-        steps = r.get("booking_steps", [])
-        if steps:
-            sh = "".join(
-                f'<div class="step"><div class="step-num">{i+1}</div>'
-                f'<div><p class="step-title">{s["title"]}</p>'
-                f'<p class="step-desc">{s["desc"]}</p></div></div>'
-                for i, s in enumerate(steps))
-            st.markdown(
-                f'<div class="steps-card"><p class="card-head">How to book</p>{sh}</div>',
-                unsafe_allow_html=True)
-
-        si = r.get("status", {})
-        if si.get("airline") or si.get("hotel"):
-            sc1, sc2 = st.columns(2)
-            if si.get("airline"): sc1.info(f"Airline: {si['airline']}")
-            if si.get("hotel"):   sc2.info(f"Hotel: {si['hotel']}")
-
-        alts = r.get("alternatives", [])
-        if alts:
-            st.markdown(
-                "<br><small style='color:#999;font-weight:600;"
-                "text-transform:uppercase;letter-spacing:.04em;'>Other options</small>",
-                unsafe_allow_html=True)
-            for a in alts:
-                trade = (f'<p class="alt-trade">Tradeoff: {a["trade"]}</p>'
-                         if a.get("trade") else "")
-                st.markdown(
-                    f'<div class="alt-chip">'
-                    f'<p class="alt-name">{a.get("name","")}</p>'
-                    f'<p class="alt-desc">{a.get("desc","")}</p>{trade}</div>',
-                    unsafe_allow_html=True)
-
-        cc = r.get("card", {})
-        if cc.get("name"):
-            bonus = f'<p class="cc-bonus">{cc["bonus"]}</p>' if cc.get("bonus") else ""
-            st.markdown(
-                f'<div class="cc-wrap"><p class="cc-eye">Worth considering</p>'
-                f'<p class="cc-name">{cc["name"]}</p>{bonus}'
-                f'<p class="cc-why">{cc.get("why","")}</p></div>',
-                unsafe_allow_html=True)
-
-        st.caption(f"Confidence: {r.get('confidence','')}")
-
-        # ── Points gap analysis ──
-        pa = r.get("points_analysis", {})
-        if pa:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(
-                '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
-                'letter-spacing:.06em;margin:0 0 8px;">Points gap analysis</p>',
-                unsafe_allow_html=True)
-            for section_key, section_label in [("flight","Flight"), ("hotel","Hotel")]:
-                sec = pa.get(section_key, {})
-                if not sec or sec.get("status") == "not_applicable":
-                    continue
-                status    = sec.get("status","")
-                pill_html = {
-                    "covered":  '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;background:#e6f4ea;color:#1e5c2a;">&#10003; Covered</span>',
-                    "shortfall":'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;background:#fff3e0;color:#7a5700;">&#9650; Shortfall</span>',
-                }.get(status, "")
-                # Bars
-                bars_html = ""
-                for b in sec.get("bars", []):
-                    pct  = min(int(b.get("pct", 0)), 100)
-                    sg   = b.get("surplus_or_gap","")
-                    sg_c = "#1e5c2a" if "+" in sg else "#cc3333"
-                    bars_html += (
-                        f'<div style="margin-bottom:12px;">'
-                        f'<div style="display:flex;justify-content:space-between;margin-bottom:4px;">'
-                        f'<span style="font-size:12px;font-weight:500;color:#111;">{b.get("name","")}</span>'
-                        f'<span style="font-size:11px;color:#888;">{b.get("have",0):,} pts available</span>'
-                        f'</div>'
-                        f'<div style="height:9px;background:#f0f0f0;border-radius:5px;position:relative;">'
-                        f'<div style="position:absolute;height:100%;width:{pct}%;background:{b.get("color","#378ADD")};border-radius:5px;"></div>'
-                        f'</div>'
-                        f'<div style="display:flex;justify-content:space-between;margin-top:3px;">'
-                        f'<span style="font-size:11px;color:#888;">Need {b.get("need",0):,} pts</span>'
-                        f'<span style="font-size:11px;font-weight:500;color:{sg_c};">{sg}</span>'
-                        f'</div></div>'
-                    )
-                # CPP alternatives
-                cpp_html = ""
-                best_cpp = max((c.get("cpp",0) for c in sec.get("cpp_alternatives",[])), default=0)
-                for c in sec.get("cpp_alternatives",[]):
-                    is_best = c.get("cpp",0) == best_cpp
-                    bg  = "#e6f4ea" if is_best else "#f7f7f7"
-                    fc  = "#1e5c2a" if is_best else "#555"
-                    badge = '<span style="font-size:9px;font-weight:700;color:#1e5c2a;text-transform:uppercase;letter-spacing:.04em;display:block;">Best value</span>' if is_best else ""
-                    cpp_html += (
-                        f'<div style="flex:1;background:{bg};border-radius:8px;padding:.65rem .85rem;">'
-                        f'{badge}'
-                        f'<p style="font-size:11px;color:{fc};margin:0 0 2px;">{c.get("label","")}</p>'
-                        f'<p style="font-size:18px;font-weight:500;color:{fc};margin:0;">{c.get("cpp",0):.1f}¢/pt</p>'
-                        f'</div>'
-                    )
-                # Transfer options
-                xfr_html = ""
-                for x in sec.get("transfer_options",[]):
-                    ok  = x.get("feasible", False)
-                    fc  = "#1e5c2a" if ok else "#cc3333"
-                    xfr_html += (
-                        f'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;'
-                        f'border-bottom:0.5px solid #f0f0f0;font-size:12px;">'
-                        f'<span style="font-weight:500;color:#111;flex:1.3;">{x.get("from_program","")}</span>'
-                        f'<span style="color:#bbb;">→</span>'
-                        f'<span style="color:#111;flex:1.3;">{x.get("to_program","")}</span>'
-                        f'<span style="color:#888;flex:.6;text-align:center;">{x.get("ratio","")}</span>'
-                        f'<span style="font-weight:500;color:{fc};flex:1;text-align:right;">'
-                        f'Need {x.get("need",0):,} · have {x.get("have",0):,}</span>'
-                        f'</div>'
-                    )
-                tip_html = ""
-                if sec.get("tip"):
-                    tip_html = (
-                        f'<div style="margin:.75rem 0 0;padding:.65rem .9rem;background:#fff8e6;'
-                        f'border-radius:8px;font-size:12px;color:#7a5700;line-height:1.5;">'
-                        f'<strong>Tip:</strong> {sec["tip"]}</div>'
-                    )
-                st.markdown(
-                    f'<div style="background:#fff;border:0.5px solid #e8e8e8;border-radius:12px;'
-                    f'overflow:hidden;margin-bottom:.75rem;">'
-                    f'<div style="padding:.9rem 1.1rem;border-bottom:0.5px solid #e8e8e8;'
-                    f'display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
-                    f'<div><p style="font-size:14px;font-weight:500;color:#111;margin:0 0 2px;">'
-                    f'{section_label} — {sec.get("program_recommended","")}</p>'
-                    f'<p style="font-size:12px;color:#888;margin:0;">Need {sec.get("required_pts",0):,} pts</p>'
-                    f'</div>{pill_html}</div>'
-                    f'<div style="padding:.9rem 1.1rem;">{bars_html}</div>'
-                    f'{"<div style=padding:0 1.1rem .9rem;><p style=font-size:11px;font-weight:500;color:#888;margin:0 0 6px;>Transfer options to close the gap</p>" + xfr_html + "</div>" if xfr_html else ""}'
-                    f'<div style="display:flex;gap:8px;padding:.75rem 1.1rem;'
-                    f'border-top:0.5px solid #e8e8e8;">{cpp_html}</div>'
-                    f'{tip_html}'
-                    f'</div>',
-                    unsafe_allow_html=True)
-
-        # ── Cash vs Points ──
-        cvp = r.get("cash_vs_points", {})
-        if cvp:
-            rec  = cvp.get("recommendation","")
-            po   = cvp.get("points_option",{})
-            co   = cvp.get("cash_option",{})
-            pts_winner  = rec == "points"
-            cash_winner = rec == "cash"
-            def cmp_card(winner, label, main_val, main_sub, details, badge="Better deal"):
-                bdr   = "2px solid #3B6D11" if winner else "0.5px solid #e8e8e8"
-                bdge  = f'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#e6f4ea;color:#1e5c2a;">{badge}</span>' if winner else ""
-                rows  = "".join(
-                    f'<div style="display:flex;justify-content:space-between;font-size:12px;color:#888;margin-bottom:2px;">'
-                    f'<span>{k}</span><span style="font-weight:500;color:#111;">{v}</span></div>'
-                    for k,v in details.items())
-                return (
-                    f'<div style="flex:1;border:{bdr};border-radius:12px;padding:.9rem 1.1rem;">'
-                    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-                    f'<span style="font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.04em;">{label}</span>{bdge}</div>'
-                    f'<p style="font-size:22px;font-weight:500;color:#111;margin-bottom:2px;">{main_val}</p>'
-                    f'<p style="font-size:12px;color:#888;margin-bottom:10px;">{main_sub}</p>'
-                    f'<div style="border-top:0.5px solid #f0f0f0;padding-top:8px;">{rows}</div>'
-                    f'</div>'
-                )
-            pts_card  = cmp_card(
-                pts_winner, "Burn points",
-                po.get("out_of_pocket","—"), "out of pocket",
-                {"Points used": f'{po.get("pts_used",0):,}',
-                 "Points value": po.get("pts_value_usd","—"),
-                 "Effective CPP": f'{po.get("cpp",0):.1f}¢'})
-            cash_card = cmp_card(
-                cash_winner, "Pay cash",
-                co.get("total_cost","—"), "total cost",
-                {"Points saved": f'{co.get("pts_saved",0):,}',
-                 "Points kept value": co.get("pts_saved_value","—"),
-                 "Net vs points": co.get("net_vs_points","—")})
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(
-                '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
-                'letter-spacing:.06em;margin:0 0 8px;">Cash vs points</p>',
-                unsafe_allow_html=True)
-            st.markdown(
-                f'<div class="cvp-grid" style="margin-bottom:.75rem;">{pts_card}{cash_card}</div>',
-                unsafe_allow_html=True)
-            if cvp.get("verdict"):
-                st.markdown(
-                    f'<div style="background:#f7f7f7;border-radius:8px;padding:.75rem 1rem;'
-                    f'font-size:13px;color:#555;line-height:1.6;">{cvp["verdict"]}</div>',
-                    unsafe_allow_html=True)
-
-        # ── Active promotions ──
-        promos = r.get("promotions", [])
-        relevant = [p for p in promos if p.get("relevant_to_this_trip", True)]
-        if relevant:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(
-                '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
-                'letter-spacing:.06em;margin:0 0 8px;">Active promotions worth knowing</p>',
-                unsafe_allow_html=True)
-            for p in relevant:
-                tags_html = "".join(
-                    f'<span style="font-size:11px;padding:2px 8px;border-radius:20px;'
-                    f'background:#e8f0fe;color:#1a56cc;margin-right:4px;">{t}</span>'
-                    for t in p.get("tags",[]))
-                expires = f'<p style="font-size:11px;color:#bbb;margin:5px 0 0;">Expires: {p["expires"]}</p>' if p.get("expires") else ""
-                st.markdown(
-                    f'<div style="border:0.5px solid #e8e8e8;border-radius:12px;'
-                    f'padding:.9rem 1.1rem;margin-bottom:.5rem;display:flex;gap:12px;">'
-                    f'<div style="width:34px;height:34px;border-radius:8px;background:#e8f0fe;'
-                    f'display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;">&#9889;</div>'
-                    f'<div><p style="font-size:13px;font-weight:500;color:#111;margin:0 0 3px;">{p.get("title","")}</p>'
-                    f'<p style="font-size:12px;color:#666;margin:0 0 6px;line-height:1.5;">{p.get("description","")}</p>'
-                    f'{tags_html}{expires}</div></div>',
-                    unsafe_allow_html=True)
-
-        # ── Metadata freshness note ──
-        gen_at = get_metadata().get("generated_at","unknown")
-        st.caption(f"Market data refreshed: {gen_at[:10] if len(gen_at) > 9 else gen_at}")
-
-    # ── Execute ──
-    if mock_mode:
-        render(MOCK, is_mock=True)
-    elif not api_key:
-        st.warning(
-            "This app is not yet configured. "
-            "Please ask the administrator to set up the API key."
-        )
-    else:
-        with st.spinner("Finding your best trip…"):
-            try:
-                render(call_claude(api_key, build_data()))
-            except json.JSONDecodeError as e:
-                st.error(f"Unexpected response: {e}")
-            except anthropic.AuthenticationError:
-                st.error("API key issue — please contact the administrator.")
-            except anthropic.APIError as e:
-                st.error(f"Service error: {e}")
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
-
-
-
-# ─────────────────────────────────────────────
-#  PAGE: ADMIN
-# ─────────────────────────────────────────────
 def page_admin():
     """
     Admin panel — access controlled by a password stored in st.secrets.
