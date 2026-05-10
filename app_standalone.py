@@ -528,6 +528,88 @@ MOCK = {
     "card": {"name": "Marriott Bonvoy Brilliant (Amex)", "bonus": "185,000 bonus points — covers 2–3 nights at the St. Regis Tokyo", "why": "Closes the hotel gap. Comes with Gold status, $300 dining credit, and Priority Pass lounge access at SFO."},
     "confidence": "High for flight · Medium for hotel (book early)",
     "status": {"airline": "No elite status — ANA Business includes lounge access at NRT on arrival.", "hotel": "Standard room assignment. The Bonvoy Brilliant card grants automatic Gold status."},
+
+    # Points-gap analysis — drives the "Covered" pill, progress bars, and CPP chips
+    # in both desktop and mobile renderers.
+    "points_analysis": {
+        "flight": {
+            "status": "covered",
+            "required_pts": 60000,
+            "program_recommended": "Aeroplan (via Chase transfer)",
+            "cpp_achieved": 2.1,
+            "cpp_alternatives": [
+                {"label": "via Aeroplan", "cpp": 2.1},
+                {"label": "via ANA",      "cpp": 1.8},
+                {"label": "via United",   "cpp": 1.4},
+            ],
+            "bars": [
+                {"name": "Chase UR", "have": 80000, "need": 60000, "pct": 100,
+                 "color": "#378ADD", "surplus_or_gap": "+20k leftover"},
+            ],
+            "transfer_options": [
+                {"from_program": "Chase UR", "to_program": "Aeroplan",
+                 "ratio": "1:1", "have": 80000, "need": 60000, "feasible": True},
+            ],
+        },
+        "hotel": {
+            "status": "covered",
+            "required_pts": 80000,
+            "program_recommended": "Marriott Bonvoy (via Amex transfer)",
+            "cpp_achieved": 1.1,
+            "cpp_alternatives": [
+                {"label": "Courtyard", "cpp": 1.1},
+                {"label": "St. Regis", "cpp": 0.8},
+                {"label": "cash/nt",   "cpp": 0.0},
+            ],
+            "bars": [
+                {"name": "Bonvoy + Amex", "have": 96000, "need": 80000, "pct": 100,
+                 "color": "#1D9E75", "surplus_or_gap": "5th night free"},
+            ],
+            "transfer_options": [
+                {"from_program": "Amex MR", "to_program": "Marriott Bonvoy",
+                 "ratio": "1:1.2", "have": 60000, "need": 80000, "feasible": True},
+            ],
+            "tip": "Book 5 consecutive nights — Bonvoy gives you the 5th free.",
+        },
+    },
+
+    # Cash vs points comparison
+    "cash_vs_points": {
+        "recommendation": "points",
+        "points_option": {
+            "out_of_pocket": "~$150",
+            "pts_used": 156000,
+            "pts_value_usd": "~$3,200",
+            "cpp": 2.1,
+        },
+        "cash_option": {
+            "total_cost": "$5,200",
+            "pts_saved": 156000,
+            "pts_saved_value": "~$3,200",
+            "net_vs_points": "+$1,850 worse than points",
+        },
+        "verdict": "Points crush cash here — you're getting 2.1¢/pt on the flight, well above the 1.5¢ threshold. Cash would cost ~$5,200 vs ~$150 plus points worth $3,200.",
+    },
+
+    # Active promotions (sample)
+    "promotions": [
+        {
+            "title": "Amex → Marriott 20% transfer bonus",
+            "description": "Transfer Membership Rewards to Bonvoy and get a 20% bonus through the end of the month. Turns 80k MR into 96k Bonvoy.",
+            "type": "transfer_bonus",
+            "tags": ["transfer bonus", "hotel"],
+            "expires": "2026-06-30",
+            "relevant_to_this_trip": True,
+        },
+        {
+            "title": "ANA Business class fare sale (SFO–NRT)",
+            "description": "Cash fares reduced ~25% for travel May–July. Doesn't affect award space, but useful as a cash benchmark.",
+            "type": "sale_fare",
+            "tags": ["sale fare", "flight"],
+            "expires": "2026-07-31",
+            "relevant_to_this_trip": True,
+        },
+    ],
 }
 
 # ─────────────────────────────────────────────
@@ -1533,11 +1615,18 @@ def _render_mobile_section_card(title, sec):
         sg   = b.get("surplus_or_gap", "")
         sg_c = "#1e5c2a" if "+" in sg else "#cc3333"
         have = b.get("have", 0); need = b.get("need", 0)
+        # Format "80k / 60k needed" — point values rounded to nearest thousand.
+        # Only apply k-suffix shortening once values are >= 1000 to avoid "0k" noise.
+        def _fmt_pts(n):
+            if n >= 1000: return f"{int(round(n/1000))}k"
+            return f"{n:,}"
+        have_s = _fmt_pts(have)
+        need_s = _fmt_pts(need)
         bars_html += (
             f'<div class="m-bar-row" style="margin-bottom:.85rem;">'
             f'<div class="m-bar-labels">'
             f'<span class="m-bar-name">{b.get("name","")}</span>'
-            f'<span class="m-bar-need">{have:,}k / {need:,}k needed</span>'
+            f'<span class="m-bar-need">{have_s} / {need_s} needed</span>'
             f'</div>'
             f'<div class="m-bar-track">'
             f'<div class="m-bar-fill" style="width:{pct}%;background:{b.get("color","#378ADD")};"></div>'
