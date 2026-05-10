@@ -68,7 +68,25 @@ IS_MOBILE  = VIEWPORT_W <= 768
 # Mobile CSS is appended ONLY on mobile and overrides where needed.
 
 st.markdown("""
+<script>
+(function(){
+    function _checkMobile(){
+        if(window.innerWidth<=768) document.body.classList.add('is-mobile');
+        else document.body.classList.remove('is-mobile');
+    }
+    _checkMobile();
+    window.addEventListener('resize',_checkMobile);
+})();
+</script>
 <style>
+/* Mobile global — scoped to body.is-mobile so desktop is never affected */
+body.is-mobile .stApp { background:#f5efe2 !important; }
+body.is-mobile section[data-testid="stSidebar"],
+body.is-mobile [data-testid="collapsedControl"],
+body.is-mobile button[data-testid="stSidebarCollapsedControl"] { display:none !important; }
+body.is-mobile .block-container { padding:.75rem .75rem 2rem !important; max-width:100% !important; }
+body.is-mobile .mobile-hide-title h1 { display:none !important; }
+/* Desktop layout */
 .block-container { max-width:860px !important; padding-top:1.5rem !important; }
 .plain-english { background:#e6f4ea; border-radius:10px; padding:.9rem 1.1rem;
     font-size:14px; color:#1e5c2a; line-height:1.65; margin-bottom:1rem; }
@@ -133,17 +151,23 @@ st.markdown("""
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
-/* Seg button groups — always stay in a single row, never stack */
-.m-seg > div[data-testid="stHorizontalBlock"],
-.mf-seg > div[data-testid="stHorizontalBlock"] {
+/* Seg button rows — force single row, never stack, on any screen width.
+   Target every possible Streamlit column container variant. */
+.m-seg > div, .mf-seg > div {
+    display: flex !important;
+    flex-direction: row !important;
     flex-wrap: nowrap !important;
     gap: 6px !important;
+    width: 100% !important;
 }
-.m-seg > div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
-.mf-seg > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+.m-seg > div > div, .mf-seg > div > div {
+    flex: 1 1 0 !important;
     min-width: 0 !important;
-    flex: 1 !important;
-    padding: 0 3px !important;
+    width: 0 !important;
+    padding: 0 !important;
+}
+.m-seg > div > div > div, .mf-seg > div > div > div {
+    width: 100% !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -154,10 +178,9 @@ st.markdown("""
 # ─────────────────────────────────────────────
 MOBILE_CSS = """
 <style>
-/* Page background — soft cream like the mockup */
-.stApp { background: #f5efe2 !important; }
-section.main > div.block-container,
-[data-testid="stAppViewContainer"] > .main .block-container {
+/* ── Page background — mobile only, scoped to body.is-mobile ── */
+body.is-mobile section.main > div.block-container,
+body.is-mobile [data-testid="stAppViewContainer"] > .main .block-container {
     background: transparent !important;
     padding: .75rem .75rem 2rem !important;
     max-width: 100% !important;
@@ -241,22 +264,7 @@ div.m-cta button {
 }
 div.m-cta button:hover { background: #2a2a2a !important; }
 
-/* Segmented button groups — force single row on all screen sizes */
-.m-seg, .mf-seg {
-    display: block;
-}
-/* Force Streamlit columns inside seg wrappers to stay side-by-side */
-.m-seg > div[data-testid="stHorizontalBlock"],
-.mf-seg > div[data-testid="stHorizontalBlock"] {
-    flex-wrap: nowrap !important;
-    gap: 6px !important;
-}
-.m-seg > div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
-.mf-seg > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-    min-width: 0 !important;
-    flex: 1 !important;
-    padding: 0 !important;
-}
+/* Segmented button groups */
 .m-seg button, .mf-seg button {
     background: #fff !important;
     color: #111 !important;
