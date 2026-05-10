@@ -1709,7 +1709,6 @@ def page_trip():
         """
         current = st.session_state.get("t_scope", "Flight + Hotel")
 
-        # Map labels to short codes for the URL param
         TILES = [
             ("Flight + Hotel", "fh",
              '<div class="st-icons-dual"><i class="ti ti-plane-tilt"></i>'
@@ -1723,12 +1722,13 @@ def page_trip():
         tiles_html = ""
         for label, code, icon_html in TILES:
             active_cls = " active" if label == current else ""
+            # Use <a target="_top"> so clicks navigate the parent Streamlit window
             tiles_html += (
-                f'<div class="st-tile{active_cls}" data-code="{code}" '
-                f'onclick="pickTile(\'{code}\')">'
+                f'<a class="st-tile{active_cls}" '
+                f'href="?scope={code}" target="_top">'
                 f'{icon_html}'
                 f'<div class="st-label">{label}</div>'
-                f'</div>'
+                f'</a>'
             )
 
         full_html = f"""
@@ -1737,15 +1737,17 @@ def page_trip():
 <head>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
-  body {{ margin:0; padding:0; background:transparent;
-         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }}
+  html, body {{ margin:0; padding:0; background:transparent;
+                font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }}
   .st-tiles {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }}
   .st-tile {{ display:flex; flex-direction:column; align-items:center;
               justify-content:center; gap:10px; padding:20px 6px 16px;
               border-radius:14px; border:2px solid #e0e0e0; background:#fff;
-              cursor:pointer; user-select:none;
+              cursor:pointer; user-select:none; text-decoration:none;
               -webkit-tap-highlight-color:transparent;
-              transition:background .12s, border-color .12s; }}
+              transition:background .12s, border-color .12s, transform .08s; }}
+  .st-tile:hover {{ border-color:#999; }}
+  .st-tile:active {{ transform:scale(0.97); }}
   .st-tile.active {{ background:#111; border-color:#111; }}
   .st-tile i {{ font-size:30px; color:#555; line-height:1; }}
   .st-tile.active i {{ color:#fff; }}
@@ -1758,19 +1760,10 @@ def page_trip():
 </head>
 <body>
 <div class="st-tiles">{tiles_html}</div>
-<script>
-function pickTile(code) {{
-  // Navigate parent (Streamlit) to add ?scope=CODE
-  // This triggers a Streamlit rerun where Python reads the query param
-  var parentUrl = new URL(window.parent.location.href);
-  parentUrl.searchParams.set('scope', code);
-  window.parent.location.href = parentUrl.toString();
-}}
-</script>
 </body>
 </html>
 """
-        st.components.v1.html(full_html, height=125)
+        st.components.v1.html(full_html, height=108, scrolling=False)
 
         return current
 
