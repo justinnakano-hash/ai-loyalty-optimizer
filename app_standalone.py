@@ -22,58 +22,50 @@ st.set_page_config(
 # ─────────────────────────────────────────────
 #  VIEWPORT DETECTION
 # ─────────────────────────────────────────────
-# IS_MOBILE is set via a JS script that adds class="is-mobile" to <body>
-# when window.innerWidth <= 768. CSS uses body.is-mobile selectors.
-# This is injected unconditionally so it always fires in the browser.
-# IS_MOBILE (Python) stays False — layout switching is CSS-only.
-IS_MOBILE = False
+# Uses a URL query param (?mobile=1) set by a tiny inline <script>.
+# The script runs on page load, checks window.innerWidth, and if ≤768
+# appends ?mobile=1 to the URL — triggering one Streamlit rerun.
+# After that rerun IS_MOBILE is True and stays True for the session.
+# No external library, no visible widget, no loading flash on desktop.
 
-# ─────────────────────────────────────────────
-#  STYLES + JS MOBILE DETECTION
-# ─────────────────────────────────────────────
-# JS runs immediately in the browser and adds body.is-mobile when
-# window.innerWidth <= 768. All mobile layout rules use body.is-mobile
-# as the selector — no @media, no Python branching, fully reliable.
+def _detect_viewport():
+    # Already detected this session
+    if "viewport_width" in st.session_state:
+        return st.session_state.viewport_width
 
-st.markdown("""
+    # Check if the JS probe set ?mobile=1
+    mobile_param = st.query_params.get("mobile", None)
+    if mobile_param is not None:
+        w = 390 if mobile_param == "1" else 1200
+        st.session_state.viewport_width = w
+        st.query_params.clear()   # clean URL
+        return w
+
+    # First render — inject the probe script, default to desktop
+    st.markdown("""
 <script>
 (function() {
-    function _applyMobile() {
-        if (window.innerWidth <= 768) {
-            document.body.classList.add('is-mobile');
-        } else {
-            document.body.classList.remove('is-mobile');
+    if (window.innerWidth <= 768) {
+        var url = new URL(window.location.href);
+        if (!url.searchParams.has('mobile')) {
+            url.searchParams.set('mobile', '1');
+            window.location.replace(url.toString());
         }
     }
-    _applyMobile();
-    window.addEventListener('resize', _applyMobile);
 })();
 </script>
-<style>
-
-/* ── LAYOUT SHOW/HIDE ─────────────────────────────────────────── */
-/* Desktop-only: visible by default, hidden when body.is-mobile   */
-.desktop-only { display: block !important; }
-.mobile-only  { display: none  !important; }
-body.is-mobile .desktop-only { display: none  !important; }
-body.is-mobile .mobile-only  { display: block !important; }
-
-/* ── MOBILE GLOBAL ────────────────────────────────────────────── */
-body.is-mobile .stApp { background: #f5efe2 !important; }
-body.is-mobile section[data-testid="stSidebar"],
-body.is-mobile [data-testid="collapsedControl"],
-body.is-mobile button[data-testid="stSidebarCollapsedControl"] {
-    display: none !important;
-}
-body.is-mobile section.main > div.block-container,
-body.is-mobile [data-testid="stAppViewContainer"] > .main .block-container {
-    background: transparent !important;
-    padding: .75rem .75rem 2rem !important;
-    max-width: 100% !important;
-}
-body.is-mobile .mobile-hide-title h1 { display: none !important; }
-</style>
 """, unsafe_allow_html=True)
+    st.session_state.viewport_width = 1200
+    return 1200
+
+VIEWPORT_W = _detect_viewport()
+IS_MOBILE  = VIEWPORT_W <= 768
+
+# ─────────────────────────────────────────────
+#  STYLES
+# ─────────────────────────────────────────────
+# Desktop CSS (unchanged from original) is always loaded.
+# Mobile CSS is appended ONLY on mobile and overrides where needed.
 
 st.markdown("""
 <style>
@@ -145,128 +137,253 @@ st.markdown("""
 
 
 # ─────────────────────────────────────────────
-#  MOBILE COMPONENT STYLES — always injected
+#  MOBILE-ONLY STYLES (mockup look)
 # ─────────────────────────────────────────────
-# These are component-level styles (.m-card, .m-tabs, etc.) that are
-# harmless on desktop (unused classes) and needed on mobile.
-# Background/sidebar/layout rules live in the body.is-mobile block above.
 MOBILE_CSS = """
 <style>
-/* Card shell */
+/* Page background — soft cream like the mockup */
+.stApp { background: #f5efe2 !important; }
+section.main > div.block-container,
+[data-testid="stAppViewContainer"] > .main .block-container {
+    background: transparent !important;
+    padding: .75rem .75rem 2rem !important;
+    max-width: 100% !important;
+}
+
+/* Hide the sidebar entirely on mobile — its controls are rendered inline */
+section[data-testid="stSidebar"] { display: none !important; }
+button[data-testid="stSidebarCollapsedControl"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
+
+/* Hide the big title — replaced by an in-card title */
+.mobile-hide-title h1 { display: none !important; }
+
+/* Card shell wrapping each "page" */
 .m-card {
-    background: #fff; border-radius: 18px;
-    padding: 1.1rem 1.1rem 1.25rem; margin-bottom: 1rem;
+    background: #fff;
+    border-radius: 18px;
+    padding: 1.1rem 1.1rem 1.25rem;
+    margin-bottom: 1rem;
     box-shadow: 0 1px 2px rgba(0,0,0,.03);
 }
-.m-card-title { font-size: 19px; font-weight: 600; color: #111; margin: 0 0 .9rem; }
+.m-card-title {
+    font-size: 19px; font-weight: 600; color: #111;
+    margin: 0 0 .9rem;
+}
 
-/* Tab nav */
-.m-tabs { display:flex; border-bottom:1px solid #e8e8e8; margin-bottom:1rem; }
-.m-tabs > div[data-testid="column"] { padding:0 !important; }
-.m-tabs button {
-    background:transparent !important; border:none !important;
-    border-bottom:2px solid transparent !important; border-radius:0 !important;
-    color:#888 !important; font-weight:500 !important;
-    padding:.55rem .25rem !important; box-shadow:none !important;
-    height:auto !important; min-height:0 !important;
+/* Tab nav inside the card */
+.m-tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid #e8e8e8;
+    margin-bottom: 1rem;
+}
+.m-tabs > div[data-testid="column"] { padding: 0 !important; }
+.m-tabs button[kind] {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    color: #888 !important;
+    font-weight: 500 !important;
+    padding: .55rem .25rem !important;
+    box-shadow: none !important;
+    height: auto !important;
+    min-height: 0 !important;
 }
 .m-tabs button[kind="primary"] {
-    color:#111 !important; border-bottom-color:#111 !important; font-weight:600 !important;
+    color: #111 !important;
+    border-bottom: 2px solid #111 !important;
+    font-weight: 600 !important;
 }
+.m-tabs button:focus { box-shadow: none !important; }
 
-/* Segmented buttons */
-.m-seg button, .mf-seg button {
-    background:#fff !important; color:#111 !important;
-    border:1px solid #e8e8e8 !important; border-radius:10px !important;
-    font-size:12.5px !important; font-weight:500 !important;
-    min-height:42px !important; box-shadow:none !important; line-height:1.2 !important;
+/* Section row — gray pill containing a label + value (Optimize for, Route, Dates, etc.) */
+.m-section {
+    background: #f5f3ec;
+    border-radius: 12px;
+    padding: .85rem 1rem;
+    margin-bottom: .75rem;
 }
-.m-seg button[kind="primary"], .mf-seg button[kind="primary"] {
-    background:#111 !important; color:#fff !important;
-    border-color:#111 !important; font-weight:600 !important;
+.m-section-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: #111; font-weight: 600;
+    margin-bottom: 0;
 }
+.m-section-head .m-section-sub {
+    font-weight: 400; color: #666; font-size: 12px;
+}
+.m-section.has-body .m-section-head { margin-bottom: .65rem; }
+.m-section-body { background: #fff; border-radius: 8px; padding: .25rem .5rem; }
 
-/* CTA button */
+/* Big black CTA */
 div.m-cta button {
-    background:#111 !important; color:#fff !important; border:none !important;
-    border-radius:12px !important; height:52px !important;
-    font-size:15px !important; font-weight:600 !important; width:100% !important;
+    background: #111 !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 12px !important;
+    height: 52px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    width: 100% !important;
+}
+div.m-cta button:hover { background: #2a2a2a !important; }
+
+/* Segmented button group (Flight+Hotel / Flight / Hotel  — and  Round trip / One way) */
+.m-seg button[kind] {
+    background: #fff !important;
+    color: #111 !important;
+    border: 1px solid #e8e8e8 !important;
+    border-radius: 10px !important;
+    font-size: 12.5px !important;
+    font-weight: 500 !important;
+    padding: .55rem .5rem !important;
+    min-height: 44px !important;
+    box-shadow: none !important;
+    line-height: 1.2 !important;
+}
+.m-seg button[kind="primary"] {
+    background: #111 !important;
+    color: #fff !important;
+    border-color: #111 !important;
+    font-weight: 600 !important;
 }
 
-/* Profile rows */
-.m-profile-cat { font-size:10px; font-weight:700; color:#999;
-    text-transform:uppercase; letter-spacing:.06em; margin:.85rem 0 .25rem; }
-.m-profile-row { display:flex; align-items:center; gap:8px;
-    padding:9px 0; border-bottom:1px solid #f3f3f3; }
-.m-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.m-name { flex:1; font-size:14px; font-weight:600; color:#111; }
-.m-bal  { font-size:13px; color:#555; white-space:nowrap; }
-.m-pill { display:inline-block; padding:2px 10px; border-radius:20px;
-    font-size:11px; font-weight:500; white-space:nowrap; margin-left:4px; }
-.m-add-prog button { border:1px dashed #d0d0d0 !important; background:#faf9f4 !important;
-    color:#555 !important; border-radius:10px !important; height:44px !important;
-    font-size:13px !important; font-weight:500 !important; }
-.m-summary-bar { background:#f5f3ec; border-radius:10px; padding:.65rem .9rem;
-    font-size:12px; color:#666; margin-top:.85rem; }
-
-/* Result cards */
-.m-res-card { border:1px solid #e8e8e8; border-radius:14px;
-    padding:1rem 1.1rem; margin-bottom:.85rem; background:#fff; }
-.m-res-head { display:flex; justify-content:space-between; align-items:flex-start;
-    margin-bottom:.85rem; gap:10px; }
-.m-res-title { font-size:15px; font-weight:600; color:#111; line-height:1.3; }
-.m-pill-covered { display:inline-flex; align-items:center; gap:4px; padding:3px 12px;
-    border-radius:20px; font-size:11px; font-weight:500;
-    background:#e6f4ea; color:#1e5c2a; white-space:nowrap; }
-.m-pill-shortfall { display:inline-flex; align-items:center; gap:4px; padding:3px 12px;
-    border-radius:20px; font-size:11px; font-weight:500;
-    background:#fff3e0; color:#7a5700; white-space:nowrap; }
-.m-bar-row { margin-bottom:.85rem; }
-.m-bar-labels { display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px; }
-.m-bar-name { font-weight:500; color:#111; }
-.m-bar-need { color:#888; }
-.m-bar-track { height:8px; background:#f0f0f0; border-radius:5px; overflow:hidden; }
-.m-bar-fill  { height:100%; border-radius:5px; }
-.m-bar-foot  { text-align:right; font-size:11px; margin-top:4px; font-weight:500; }
-.m-cpp-row   { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:.85rem; }
-.m-cpp-chip  { border-radius:10px; padding:.55rem .4rem; text-align:center; line-height:1.25; }
-.m-cpp-chip.best   { background:#e6f4ea; color:#1e5c2a; }
-.m-cpp-chip.normal { background:#f5f3ec; color:#555; }
-.m-cpp-val { font-size:16px; font-weight:600; display:block; }
-.m-cpp-lbl  { font-size:11px; display:block; margin-top:1px; }
-.m-plain { background:#e6f4ea; border-radius:12px; padding:.85rem 1rem;
-    font-size:13.5px; color:#1e5c2a; line-height:1.55; margin-bottom:1rem; }
-
-/* Trip form sections */
-.mf-section { background:#f5f3ec; border-radius:14px; margin-bottom:.65rem; overflow:hidden; }
-.mf-header { display:flex; justify-content:space-between; align-items:center;
-    padding:.85rem 1rem; font-size:14px; }
-.mf-header-label { font-weight:600; color:#111; }
-.mf-header-value { color:#666; font-size:13px; font-weight:400;
-    text-align:right; max-width:55%;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.mf-body { padding:0 .85rem .85rem; }
-.mf-route-row { display:flex; align-items:flex-start; gap:10px;
-    padding:.55rem 0; border-top:1px solid #eceae3; }
-.mf-route-lbl { font-size:13px; color:#888; width:38px; flex-shrink:0; padding-top:6px; }
-.mf-route-val { flex:1; }
-.mf-body div[data-testid="stSelectbox"] label,
-.mf-body div[data-testid="stDateInput"] label,
-.mf-body div[data-testid="stNumberInput"] label { display:none !important; }
-.mf-body div[data-testid="stSelectbox"] > div > div {
-    background:#fff !important; border-color:#e0e0e0 !important;
-    border-radius:10px !important; font-size:14px !important;
+/* Streamlit input cleanup inside cards */
+.m-card div[data-testid="stSelectbox"] > div > div,
+.m-card div[data-testid="stNumberInput"] > div > div,
+.m-card div[data-testid="stDateInput"] > div > div {
+    background: #fff !important;
+    border-color: #e0e0e0 !important;
+    border-radius: 8px !important;
+    min-height: 38px !important;
 }
-.mf-body div[data-testid="stDateInput"] > div > div {
-    background:#fff !important; border-color:#e0e0e0 !important;
-    border-radius:10px !important;
+.m-card .stCaption, .m-card label[data-testid="stWidgetLabel"] {
+    font-size: 11px !important;
+    color: #888 !important;
 }
-.mf-body div[data-testid="stSlider"] { padding:0 .1rem !important; }
-.mf-body div[data-testid="stSlider"] label { display:none !important; }
+.m-card hr { display: none !important; }
+
+/* Compact select labels */
+.m-card .stSelectbox label, .m-card .stNumberInput label,
+.m-card .stDateInput label, .m-card .stRadio label {
+    font-size: 11px !important; color: #888 !important;
+    margin-bottom: 2px !important;
+}
+
+/* Profile rows — tighter on mobile */
+.m-profile-cat {
+    font-size: 10px; font-weight: 700; color: #999;
+    text-transform: uppercase; letter-spacing: .06em;
+    margin: .85rem 0 .25rem;
+}
+.m-profile-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 0;
+    border-bottom: 1px solid #f3f3f3;
+}
+.m-profile-row .m-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.m-profile-row .m-name {
+    flex: 1; font-size: 14px; font-weight: 600; color: #111;
+}
+.m-profile-row .m-bal {
+    font-size: 13px; color: #555; white-space: nowrap;
+}
+.m-profile-row .m-pill {
+    display: inline-block; padding: 2px 10px;
+    border-radius: 20px; font-size: 11px; font-weight: 500;
+    white-space: nowrap; margin-left: 4px;
+}
+
+/* Add program row — match button height with inputs */
+.m-add-prog button {
+    border: 1px dashed #d0d0d0 !important;
+    background: #faf9f4 !important;
+    color: #555 !important;
+    border-radius: 10px !important;
+    height: 44px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+}
+.m-summary-bar {
+    background: #f5f3ec;
+    border-radius: 10px;
+    padding: .65rem .9rem;
+    font-size: 12px; color: #666;
+    margin-top: .85rem;
+}
+
+/* Results — mockup-style "Covered" pills, tighter cards */
+.m-res-card {
+    border: 1px solid #e8e8e8; border-radius: 14px;
+    padding: 1rem 1.1rem; margin-bottom: .85rem;
+    background: #fff;
+}
+.m-res-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: .85rem; gap: 10px;
+}
+.m-res-title { font-size: 15px; font-weight: 600; color: #111; line-height: 1.3; }
+.m-pill-covered {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 500;
+    background: #e6f4ea; color: #1e5c2a;
+    white-space: nowrap;
+}
+.m-pill-shortfall {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 500;
+    background: #fff3e0; color: #7a5700;
+    white-space: nowrap;
+}
+.m-bar-row { margin-bottom: .25rem; }
+.m-bar-labels {
+    display: flex; justify-content: space-between;
+    font-size: 12px; margin-bottom: 5px;
+}
+.m-bar-labels .m-bar-name { font-weight: 500; color: #111; }
+.m-bar-labels .m-bar-need { color: #888; }
+.m-bar-track {
+    height: 8px; background: #f0f0f0;
+    border-radius: 5px; position: relative; overflow: hidden;
+}
+.m-bar-fill { height: 100%; border-radius: 5px; }
+.m-bar-foot {
+    text-align: right; font-size: 11px; margin-top: 4px;
+    font-weight: 500;
+}
+
+/* CPP comparison chips (3 across) */
+.m-cpp-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px; margin-top: .85rem;
+}
+.m-cpp-chip {
+    border-radius: 10px; padding: .55rem .4rem;
+    text-align: center; line-height: 1.25;
+}
+.m-cpp-chip.best   { background: #e6f4ea; color: #1e5c2a; }
+.m-cpp-chip.normal { background: #f5f3ec; color: #555; }
+.m-cpp-val { font-size: 16px; font-weight: 600; display: block; }
+.m-cpp-lbl { font-size: 11px; display: block; margin-top: 1px; }
+
+/* Plain-english callout, tighter */
+.m-plain {
+    background: #e6f4ea; border-radius: 12px;
+    padding: .85rem 1rem; font-size: 13.5px;
+    color: #1e5c2a; line-height: 1.55; margin-bottom: 1rem;
+}
+
+/* Hide column hint labels and other desktop chrome on mobile */
+.m-hide-on-mobile { display: none !important; }
 </style>
 """
 
-st.markdown(MOBILE_CSS, unsafe_allow_html=True)  # always inject — harmless on desktop
+if IS_MOBILE:
+    st.markdown(MOBILE_CSS, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
@@ -379,54 +496,15 @@ def get_cat(name):
 # ─────────────────────────────────────────────
 #  SESSION STATE
 # ─────────────────────────────────────────────
-#  PERSISTENT ADMIN SETTINGS
-# ─────────────────────────────────────────────
-# st.cache_resource is shared across ALL user sessions in the same process.
-# We back it with admin_settings.json so it also survives redeploys/restarts.
-
-from pathlib import Path as _Path
-_ADMIN_SETTINGS_PATH = _Path(__file__).parent / "admin_settings.json"
-
-@st.cache_resource
-def _admin_settings_store():
-    """Shared mutable dict — one instance across all sessions. Loaded from disk once."""
-    if _ADMIN_SETTINGS_PATH.exists():
-        try:
-            return json.loads(_ADMIN_SETTINGS_PATH.read_text())
-        except Exception:
-            pass
-    return {"mock_override": False}
-
-def get_admin_setting(key, default=None):
-    return _admin_settings_store().get(key, default)
-
-def set_admin_setting(key, value):
-    store = _admin_settings_store()
-    store[key] = value
-    try:
-        _ADMIN_SETTINGS_PATH.write_text(json.dumps(store, indent=2))
-    except Exception:
-        pass  # disk write failure is non-fatal; in-memory store still works
-
-# ─────────────────────────────────────────────
-#  SESSION STATE
-# ─────────────────────────────────────────────
 if "profile"     not in st.session_state: st.session_state.profile     = {}
 if "page"        not in st.session_state: st.session_state.page        = "profile"
 if "editing"     not in st.session_state: st.session_state.editing     = None
 if "admin_authed" not in st.session_state: st.session_state.admin_authed = False
+if "mock_override" not in st.session_state: st.session_state.mock_override = None  # None | True | False
 
-# mock_override is now read from the persistent admin store, not session state.
-# We keep a session-state copy only as a read-through cache for this render.
-if "mock_override" not in st.session_state:
-    st.session_state.mock_override = get_admin_setting("mock_override", None)
-
-# Mobile-only widget state (segmented controls + trip form)
+# Mobile-only widget state (segmented controls)
 if "m_search_scope" not in st.session_state: st.session_state.m_search_scope = "Flight + Hotel"
 if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "Round trip"
-if "m_cabin"        not in st.session_state: st.session_state.m_cabin        = "Economy"
-if "m_hotel_style"  not in st.session_state: st.session_state.m_hotel_style  = "Standard"
-if "m_val_exp"      not in st.session_state: st.session_state.m_val_exp      = 5
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
@@ -543,12 +621,14 @@ MOCK = {
 # ─────────────────────────────────────────────
 #  PAGE: MY PROFILE — DESKTOP (unchanged)
 # ─────────────────────────────────────────────
-def page_profile_desktop():
-    st.markdown("## My Loyalty Profile")
-    st.caption("Set up once — used for every trip.")
-
+def page_profile():
     profile = st.session_state.profile
     editing = st.session_state.get("editing", None)
+
+    st.markdown(
+        '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
+        'letter-spacing:.05em;margin:0 0 .75rem;">MY LOYALTY PROFILE</p>',
+        unsafe_allow_html=True)
 
     if not profile:
         st.info("No programs added yet. Use the form below to get started.")
@@ -557,16 +637,12 @@ def page_profile_desktop():
             cat_entries = {k: v for k, v in profile.items() if k in cat_progs}
             if not cat_entries:
                 continue
-
-            # Category heading
             st.markdown(
                 f'<p style="font-size:11px;font-weight:700;color:#999;'
-                f'text-transform:uppercase;letter-spacing:.06em;'
-                f'margin:1rem 0 4px;">{cat_name}</p>',
+                f'text-transform:uppercase;letter-spacing:.06em;margin:1rem 0 4px;">{cat_name}</p>',
                 unsafe_allow_html=True)
-            st.markdown(
-                '<div style="border-top:1px solid #e8e8e8;margin-bottom:2px;"></div>',
-                unsafe_allow_html=True)
+            st.markdown('<div style="border-top:1px solid #e8e8e8;margin-bottom:2px;"></div>',
+                        unsafe_allow_html=True)
 
             for prog_name, entry in cat_entries.items():
                 pdata  = ALL_PROGRAMS[prog_name]
@@ -575,7 +651,6 @@ def page_profile_desktop():
                 bal    = entry["balance"]
 
                 if editing == prog_name:
-                    # ── Inline edit row ──
                     st.markdown(
                         f'<div style="background:#f0f6ff;border:1px solid #c5d8f7;'
                         f'border-radius:8px;padding:6px 10px;margin:4px 0;">'
@@ -584,13 +659,11 @@ def page_profile_desktop():
                         unsafe_allow_html=True)
                     e1, e2, e3, e4 = st.columns([2, 2, 1, 1])
                     with e1:
-                        new_bal = st.number_input(
-                            "Balance", min_value=0, step=1000, value=bal,
-                            key=f"ebal_{prog_name}", label_visibility="collapsed")
+                        new_bal = st.number_input("Balance", min_value=0, step=1000,
+                            value=bal, key=f"ebal_{prog_name}", label_visibility="collapsed")
                     with e2:
                         idx = pdata["statuses"].index(status) if status in pdata["statuses"] else 0
-                        new_status = st.selectbox(
-                            "Status", pdata["statuses"], index=idx,
+                        new_status = st.selectbox("Status", pdata["statuses"], index=idx,
                             key=f"estat_{prog_name}", label_visibility="collapsed")
                     with e3:
                         if st.button("Save", key=f"save_{prog_name}",
@@ -604,242 +677,78 @@ def page_profile_desktop():
                                      use_container_width=True):
                             st.session_state.editing = None
                             st.rerun()
-
                 else:
-                    # ── View row ──
                     is_active = status not in ["None", "Standard"]
                     pill_bg   = "#e6f4ea" if is_active else "#f0f0f0"
                     pill_col  = "#1e5c2a" if is_active else "#666"
-
                     r_info, r_edit, r_del = st.columns([7, 1, 1])
-
                     with r_info:
                         st.markdown(
                             f'<div style="display:flex;align-items:center;gap:10px;'
                             f'padding:8px 0;border-bottom:1px solid #f5f5f5;">'
                             f'<span style="width:9px;height:9px;border-radius:50%;'
                             f'background:{color};flex-shrink:0;display:inline-block;"></span>'
-                            f'<span style="font-size:13px;font-weight:600;color:#111;'
-                            f'flex:1;">{prog_name}</span>'
-                            f'<span style="font-size:13px;color:#555;'
-                            f'white-space:nowrap;">{bal:,} pts</span>'
+                            f'<span style="font-size:13px;font-weight:600;color:#111;flex:1;">'
+                            f'{prog_name}</span>'
+                            f'<span style="font-size:13px;color:#555;white-space:nowrap;">'
+                            f'{bal:,} pts</span>'
                             f'<span style="display:inline-block;padding:2px 10px;'
                             f'border-radius:20px;font-size:11px;font-weight:500;'
-                            f'background:{pill_bg};color:{pill_col};'
-                            f'white-space:nowrap;margin-left:4px;">{status}</span>'
-                            f'</div>',
+                            f'background:{pill_bg};color:{pill_col};white-space:nowrap;'
+                            f'margin-left:4px;">{status}</span></div>',
                             unsafe_allow_html=True)
-
                     with r_edit:
-                        if st.button("Edit", key=f"edit_{prog_name}",
-                                     use_container_width=True,
-                                     help=f"Edit {prog_name}"):
+                        if st.button("Edit", key=f"edit_{prog_name}", use_container_width=True):
                             st.session_state.editing = prog_name
                             st.rerun()
-
                     with r_del:
-                        if st.button("Remove", key=f"del_{prog_name}",
-                                     use_container_width=True,
-                                     help=f"Remove {prog_name}"):
+                        if st.button("Remove", key=f"del_{prog_name}", use_container_width=True):
                             del st.session_state.profile[prog_name]
                             if st.session_state.editing == prog_name:
                                 st.session_state.editing = None
                             st.rerun()
 
-        # Summary bar
         total = sum(e["balance"] for e in profile.values())
-        elite = sum(1 for e in profile.values()
-                    if e["status"] not in ["None", "Standard"])
+        elite = sum(1 for e in profile.values() if e["status"] not in ["None", "Standard"])
         st.markdown(
             f'<div style="margin-top:1rem;padding:.75rem 1rem;background:#f7f7f7;'
             f'border-radius:8px;font-size:13px;color:#555;">'
             f'<b>{len(profile)}</b> programs &nbsp;&middot;&nbsp; '
             f'<b>{total:,}</b> total points &nbsp;&middot;&nbsp; '
-            f'<b>{elite}</b> elite status(es)'
-            f'</div>',
+            f'<b>{elite}</b> elite status(es)</div>',
             unsafe_allow_html=True)
 
-    # ── Add program ──
     st.markdown("---")
     st.markdown("**Add a program**")
-
     ac1, ac2, ac3, ac4, ac5 = st.columns([1.4, 1.8, 1.4, 1.8, 0.8])
     with ac1:
-        add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="m_add_cat")
+        add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="add_cat")
     already_added = set(profile.keys())
     available = [p for p in PROGRAMS[add_cat] if p not in already_added]
     with ac2:
         if available:
-            add_prog = st.selectbox("Program", available, key="m_add_prog")
+            add_prog = st.selectbox("Program", available, key="add_prog")
         else:
-            st.selectbox("Program", ["— all added —"], disabled=True,
-                         key="add_prog_dis")
+            st.selectbox("Program", ["— all added —"], disabled=True, key="add_prog_dis")
             add_prog = None
     with ac3:
         add_bal = st.number_input("Balance (pts)", min_value=0, step=1000,
                                   value=0, key="add_bal")
     with ac4:
         if add_prog:
-            add_status = st.selectbox(
-                "Status", PROGRAMS[add_cat][add_prog]["statuses"],
-                key="add_status")
+            add_status = st.selectbox("Status", PROGRAMS[add_cat][add_prog]["statuses"],
+                                      key="add_status")
         else:
-            st.selectbox("Status", ["—"], disabled=True, key="m_add_status_dis")
+            st.selectbox("Status", ["—"], disabled=True, key="add_status_dis")
             add_status = None
     with ac5:
-        # Align button to bottom of column to match input height
         st.markdown("<div style='margin-top:1.75rem;'>", unsafe_allow_html=True)
         if st.button("+ Add", use_container_width=True, type="primary",
                      disabled=not add_prog, key="add_btn"):
-            st.session_state.profile[add_prog] = {
-                "balance": add_bal, "status": add_status}
+            st.session_state.profile[add_prog] = {"balance": add_bal, "status": add_status}
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  PAGE: MY PROFILE — MOBILE
-# ─────────────────────────────────────────────
-def page_profile_mobile():
-    profile = st.session_state.profile
-    editing = st.session_state.get("editing", None)
-
-    st.markdown('<div class="m-card">', unsafe_allow_html=True)
-    st.markdown('<p class="m-card-title">Loyalty Optimizer</p>', unsafe_allow_html=True)
-
-    # Tab nav (Profile / Plan / Admin)
-    _render_mobile_tabs()
-
-    if not profile:
-        st.info("No programs added yet. Add one below to get started.")
-    else:
-        for cat_name, cat_progs in PROGRAMS.items():
-            cat_entries = {k: v for k, v in profile.items() if k in cat_progs}
-            if not cat_entries:
-                continue
-            st.markdown(f'<p class="m-profile-cat">{cat_name}</p>', unsafe_allow_html=True)
-
-            for prog_name, entry in cat_entries.items():
-                pdata  = ALL_PROGRAMS[prog_name]
-                color  = pdata["color"]
-                status = entry["status"]
-                bal    = entry["balance"]
-
-                if editing == prog_name:
-                    st.markdown(
-                        f'<div style="background:#f0f6ff;border:1px solid #c5d8f7;'
-                        f'border-radius:8px;padding:6px 10px;margin:4px 0;">'
-                        f'<span style="font-size:12px;color:#1a56cc;font-weight:500;">'
-                        f'Editing — {prog_name}</span></div>',
-                        unsafe_allow_html=True)
-                    new_bal = st.number_input(
-                        "Balance", min_value=0, step=1000, value=bal,
-                        key=f"m_ebal_{prog_name}")
-                    idx = pdata["statuses"].index(status) if status in pdata["statuses"] else 0
-                    new_status = st.selectbox(
-                        "Status", pdata["statuses"], index=idx,
-                        key=f"m_estat_{prog_name}")
-                    bc1, bc2 = st.columns(2)
-                    with bc1:
-                        if st.button("Save", key=f"m_save_{prog_name}",
-                                     use_container_width=True, type="primary"):
-                            st.session_state.profile[prog_name] = {
-                                "balance": new_bal, "status": new_status}
-                            st.session_state.editing = None
-                            st.rerun()
-                    with bc2:
-                        if st.button("Cancel", key=f"m_cancel_{prog_name}",
-                                     use_container_width=True):
-                            st.session_state.editing = None
-                            st.rerun()
-                else:
-                    is_active = status not in ["None", "Standard"]
-                    pill_bg   = "#e6f4ea" if is_active else "#f0f0f0"
-                    pill_col  = "#1e5c2a" if is_active else "#666"
-
-                    # Display row
-                    pill_html = (
-                        f'<span class="m-pill" style="background:{pill_bg};'
-                        f'color:{pill_col};">{status}</span>'
-                        if is_active else ""
-                    )
-                    st.markdown(
-                        f'<div class="m-profile-row">'
-                        f'<span class="m-dot" style="background:{color};"></span>'
-                        f'<span class="m-name">{prog_name}</span>'
-                        f'<span class="m-bal">{bal:,}</span>'
-                        f'{pill_html}'
-                        f'</div>',
-                        unsafe_allow_html=True)
-
-                    # Edit/Remove icons under the row, small
-                    ec1, ec2, _ = st.columns([1, 1, 4])
-                    with ec1:
-                        if st.button("Edit", key=f"m_edit_{prog_name}",
-                                     use_container_width=True):
-                            st.session_state.editing = prog_name
-                            st.rerun()
-                    with ec2:
-                        if st.button("Remove", key=f"m_del_{prog_name}",
-                                     use_container_width=True):
-                            del st.session_state.profile[prog_name]
-                            if st.session_state.editing == prog_name:
-                                st.session_state.editing = None
-                            st.rerun()
-
-    # ── Add program section ──
-    st.markdown('<div style="height:.6rem;"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="m-add-prog">', unsafe_allow_html=True)
-
-    add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="add_cat")
-    already_added = set(profile.keys())
-    available = [p for p in PROGRAMS[add_cat] if p not in already_added]
-    if available:
-        add_prog = st.selectbox("Program", available, key="add_prog")
-    else:
-        st.selectbox("Program", ["— all added —"], disabled=True, key="m_add_prog_dis")
-        add_prog = None
-    add_bal = st.number_input("Balance (pts)", min_value=0, step=1000,
-                              value=0, key="m_add_bal")
-    if add_prog:
-        add_status = st.selectbox(
-            "Status", PROGRAMS[add_cat][add_prog]["statuses"], key="m_add_status")
-    else:
-        st.selectbox("Status", ["—"], disabled=True, key="add_status_dis")
-        add_status = None
-
-    if st.button("+ Add program", use_container_width=True, type="primary",
-                 disabled=not add_prog, key="m_add_btn"):
-        st.session_state.profile[add_prog] = {
-            "balance": add_bal, "status": add_status}
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Summary bar
-    if profile:
-        total = sum(e["balance"] for e in profile.values())
-        elite = sum(1 for e in profile.values()
-                    if e["status"] not in ["None", "Standard"])
-        st.markdown(
-            f'<div class="m-summary-bar">'
-            f'<b>{len(profile)}</b> programs · '
-            f'<b>{total:,}</b> pts · '
-            f'<b>{elite}</b> elite'
-            f'</div>',
-            unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)  # /m-card
-
-
-def page_profile():
-    st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
-    page_profile_desktop()
-    st.markdown('</div><div class="mobile-only">', unsafe_allow_html=True)
-    page_profile_mobile()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────
-#  MOBILE HELPERS — tab nav inside cards
-# ─────────────────────────────────────────────
 def _render_mobile_tabs():
     """Render Profile / Plan / Admin tabs inside a card. Active tab = primary."""
     st.markdown('<div class="m-tabs">', unsafe_allow_html=True)
@@ -888,10 +797,10 @@ def _get_api_key():
 
 
 def _resolve_mock_mode(api_key):
-    # If no API key is configured, always use mock regardless of setting
-    if not api_key:
-        return True
-    return get_admin_setting("mock_override", False)
+    override = st.session_state.get("mock_override", None)
+    if override is not None:
+        return override
+    return api_key is None
 
 
 def _build_trip_data(profile, params):
@@ -1653,435 +1562,164 @@ def _render_mobile_cash_vs_points(cvp):
 # ─────────────────────────────────────────────
 #  PAGE: PLAN A TRIP — DESKTOP (sidebar form preserved from original)
 # ─────────────────────────────────────────────
-def page_trip_desktop():
-    profile  = st.session_state.profile
-    api_key  = _get_api_key()
-    mock_mode = _resolve_mock_mode(api_key)
-
-    # ── Sidebar ──
-    with st.sidebar:
-        gen_at = get_metadata().get("generated_at", "")
-        if mock_mode:
-            st.info("Preview mode — showing sample data.")
-        else:
-            if gen_at and gen_at != "not-yet-refreshed":
-                st.caption(f"Market data: {gen_at[:10]}")
-            else:
-                st.warning("Market data not yet loaded.")
-        st.divider()
-
-        st.markdown("### What are you planning?")
-        search_scope = st.radio(
-            "Optimize for",
-            ["Flight + Hotel", "Flight only", "Hotel only"],
-            horizontal=True, key="search_scope")
-        include_flight = search_scope in ["Flight + Hotel", "Flight only"]
-        include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
-
-        st.divider()
-
-        if include_flight:
-            st.markdown("### Flight")
-            trip_type = st.radio(
-                "Trip type", ["Round trip", "One way"],
-                horizontal=True, key="trip_type")
-            is_roundtrip = trip_type == "Round trip"
-
-            origin_label = st.selectbox(
-                "Flying from", AIRPORT_LABELS,
-                index=AIRPORT_LABELS.index("San Francisco, CA — SFO (SFO)"),
-                key="origin_sel")
-            origin_code = AIRPORTS[origin_label]
-            origin_city = origin_label.split(" —")[0]
-            st.caption(f"Airport: **{origin_code}**")
-
-            dest_label = st.selectbox(
-                "Flying to", AIRPORT_LABELS,
-                index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
-                key="dest_sel")
-            dest_code = AIRPORTS[dest_label]
-            dest_city = dest_label.split(" —")[0]
-            st.caption(f"Airport: **{dest_code}**")
-
-            cabin = st.selectbox("Cabin class",
-                                 ["Economy", "Premium Economy", "Business", "First"],
-                                 key="cabin_sel")
-
-            st.markdown("**Departure date**")
-            depart_date = st.date_input(
-                "Departure", value=date(2026, 6, 10),
-                min_value=date.today(),
-                label_visibility="collapsed", key="depart_date")
-
-            if is_roundtrip:
-                st.markdown("**Return date**")
-                return_date = st.date_input(
-                    "Return",
-                    value=depart_date + timedelta(days=10),
-                    min_value=depart_date + timedelta(days=1),
-                    label_visibility="collapsed", key="return_date")
-                flight_nights = (return_date - depart_date).days
-                st.caption(f"{flight_nights} nights away")
-            else:
-                return_date  = None
-                flight_nights = None
-        else:
-            origin_city = ""; origin_code = ""
-            dest_city   = ""; dest_code   = ""
-            cabin = "Economy"
-            depart_date   = date.today()
-            return_date   = None
-            flight_nights = None
-            is_roundtrip  = False
-
-        st.divider()
-
-        if include_hotel:
-            st.markdown("### Hotel")
-            hotel_style = st.selectbox("Hotel style",
-                                       ["Budget", "Standard", "Luxury"],
-                                       key="hotel_style_sel")
-
-            if include_flight and is_roundtrip:
-                hotel_nights = flight_nights
-                st.caption(f"Staying **{hotel_nights} nights** (matches your flight dates)")
-            elif include_flight and not is_roundtrip:
-                hotel_nights = st.number_input(
-                    "Nights", min_value=1, max_value=60, value=5,
-                    key="hotel_nights_input")
-            else:
-                st.markdown("**Check-in date**")
-                checkin_date = st.date_input(
-                    "Check-in", value=date(2026, 6, 10),
-                    min_value=date.today(),
-                    label_visibility="collapsed", key="checkin_date")
-                st.markdown("**Check-out date**")
-                checkout_date = st.date_input(
-                    "Check-out",
-                    value=checkin_date + timedelta(days=5),
-                    min_value=checkin_date + timedelta(days=1),
-                    label_visibility="collapsed", key="checkout_date")
-                hotel_nights = (checkout_date - checkin_date).days
-                depart_date  = checkin_date
-                st.caption(f"{hotel_nights} nights")
-
-                if not include_flight:
-                    dest_label = st.selectbox(
-                        "Destination city", AIRPORT_LABELS,
-                        index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
-                        key="hotel_dest_sel")
-                    dest_city = dest_label.split(" —")[0]
-                    dest_code = AIRPORTS[dest_label]
-        else:
-            hotel_style  = "Standard"
-            hotel_nights = None
-
-        st.divider()
-
-        val_exp = st.slider("Value ← · → Experience", 1, 10, 5,
-                            help="1 = maximize points value  ·  10 = maximize experience quality")
-
-        st.divider()
-        run = st.button("Find My Best Trip", type="primary", use_container_width=True)
-
-        if include_flight and is_roundtrip:
-            dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
-        elif include_flight:
-            dates_str = f"{depart_date.strftime('%b %d, %Y')} (one way)"
-        elif include_hotel:
-            dates_str = f"{depart_date.strftime('%b %d')} – {(depart_date + timedelta(days=hotel_nights)).strftime('%b %d, %Y')}"
-        else:
-            dates_str = ""
-
-        nights = hotel_nights if hotel_nights else (flight_nights or 0)
-
-    # ── Main panel ──
-    st.markdown("## Plan a Trip")
-
-    if not profile:
-        st.warning("Your loyalty profile is empty. Go to **My Profile** and add your programs first.")
-        return
-
-    total_pts = sum(e["balance"] for e in profile.values())
-    elite_ct  = sum(1 for e in profile.values() if e["status"] not in ["None", "Standard"])
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Programs loaded",  len(profile))
-    m2.metric("Total points",     f"{total_pts:,}")
-    m3.metric("Elite statuses",   elite_ct)
-    st.markdown("---")
-
-    if not run:
-        st.info("Configure your trip in the sidebar — choose flight, hotel, or both — then click **Find My Best Trip**.")
-        return
-
-    params = {
-        'origin_city':    origin_city, 'origin_code': origin_code,
-        'dest_city':      dest_city,   'dest_code':   dest_code,
-        'cabin':          cabin,       'hotel_style': hotel_style,
-        'val_exp':        val_exp,     'dates_str':   dates_str,
-        'nights':         nights,      'is_roundtrip': is_roundtrip,
-        'include_flight': include_flight, 'include_hotel': include_hotel,
-    }
-
-    if mock_mode:
-        _render_results_desktop(MOCK, params, is_mock=True)
-    elif not api_key:
-        st.warning("This app is not yet configured. Please ask the administrator to set up the API key.")
-    else:
-        with st.spinner("Finding your best trip…"):
-            try:
-                data = _build_trip_data(profile, params)
-                result = _call_claude(api_key, data, params)
-                _render_results_desktop(result, params)
-            except json.JSONDecodeError as e:
-                st.error(f"Unexpected response: {e}")
-            except anthropic.AuthenticationError:
-                st.error("API key issue — please contact the administrator.")
-            except anthropic.APIError as e:
-                st.error(f"Service error: {e}")
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
-
-# ─────────────────────────────────────────────
-#  PAGE: PLAN A TRIP — MOBILE (inline form, mockup-styled)
-# ─────────────────────────────────────────────
-def page_trip_mobile():
+def page_trip():
     profile   = st.session_state.profile
     api_key   = _get_api_key()
     mock_mode = _resolve_mock_mode(api_key)
 
-    st.markdown('<div class="m-card">', unsafe_allow_html=True)
-    st.markdown('<p class="m-card-title">Loyalty Optimizer</p>', unsafe_allow_html=True)
-    _render_mobile_tabs()
-
     if not profile:
-        st.warning("Your loyalty profile is empty. Tap **Profile** above and add your programs first.")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.warning("Your loyalty profile is empty. Go to **My Profile** and add your programs first.")
         return
 
     if mock_mode:
         st.markdown('<div class="mock-banner">Preview mode — sample data.</div>',
                     unsafe_allow_html=True)
 
-    # ── Helper: segmented buttons with mf-seg class ──
-    def mf_seg(options, state_key, key_prefix, n_cols=None):
+    def seg(options, state_key, key_prefix, n_cols=None):
         current = st.session_state.get(state_key, options[0])
         n = n_cols or len(options)
         st.markdown('<div class="mf-seg">', unsafe_allow_html=True)
         cols = st.columns(n)
         for i, opt in enumerate(options):
             with cols[i % n]:
-                if st.button(opt, key=f"{key_prefix}_{i}",
-                             use_container_width=True,
+                if st.button(opt, key=f"{key_prefix}_{i}", use_container_width=True,
                              type="primary" if opt == current else "secondary"):
                     st.session_state[state_key] = opt
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         return st.session_state[state_key]
 
-    # ── OPTIMIZE FOR ──
-    cur_scope = st.session_state.get("m_search_scope", "Flight + Hotel")
-    scope_display = {"Flight + Hotel": "Flight + Hotel",
-                     "Flight only": "Flight", "Hotel only": "Hotel"}
-    st.markdown(
-        f'<div class="mf-section">'
-        f'<div class="mf-header">'
-        f'<span class="mf-header-label">Optimize for</span>'
-        f'<span class="mf-header-value">{scope_display.get(cur_scope, cur_scope)}</span>'
-        f'</div><div class="mf-body">',
-        unsafe_allow_html=True)
-    raw_scope = mf_seg(["Flight + Hotel", "Flight", "Hotel"],
-                       "m_search_scope", "mf_scope", n_cols=3)
-    st.markdown('</div></div>', unsafe_allow_html=True)
+    def mf_open(label, value=""):
+        val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
+        st.markdown(
+            f'<div class="mf-section"><div class="mf-header">'
+            f'<span class="mf-header-label">{label}</span>{val_html}'
+            f'</div><div class="mf-body">', unsafe_allow_html=True)
 
+    def mf_close():
+        st.markdown('</div></div>', unsafe_allow_html=True)
+
+    # ── Optimize for ──
+    cur_scope = st.session_state.get("t_scope", "Flight + Hotel")
+    mf_open("Optimize for", cur_scope)
+    raw_scope = seg(["Flight + Hotel", "Flight", "Hotel"], "t_scope", "ts", n_cols=3)
+    mf_close()
     scope_map    = {"Flight": "Flight only", "Hotel": "Hotel only"}
     search_scope = scope_map.get(raw_scope, raw_scope)
     include_flight = search_scope in ["Flight + Hotel", "Flight only"]
     include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
 
-    # ── ROUTE ──
+    # ── Route ──
     if include_flight:
-        cur_orig = st.session_state.get("m_origin_sel", "San Francisco, CA — SFO (SFO)")
-        cur_dest = st.session_state.get("m_dest_sel",   "Tokyo — Narita (NRT)")
-        orig_code = AIRPORTS.get(cur_orig, "—")
-        dest_code_prev = AIRPORTS.get(cur_dest, "—")
-        st.markdown(
-            f'<div class="mf-section">'
-            f'<div class="mf-header">'
-            f'<span class="mf-header-label">Route</span>'
-            f'<span class="mf-header-value">{orig_code} → {dest_code_prev}</span>'
-            f'</div><div class="mf-body">',
-            unsafe_allow_html=True)
-
-        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">From</span><div class="mf-route-val">',
-                    unsafe_allow_html=True)
-        origin_label = st.selectbox("From", AIRPORT_LABELS,
-            index=AIRPORT_LABELS.index(cur_orig),
-            key="m_origin_sel", label_visibility="collapsed")
+        cur_orig  = st.session_state.get("t_origin", "San Francisco, CA — SFO (SFO)")
+        cur_dest  = st.session_state.get("t_dest",   "Tokyo — Narita (NRT)")
+        mf_open("Route", f"{AIRPORTS.get(cur_orig,'—')} → {AIRPORTS.get(cur_dest,'—')}")
+        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">From</span><div class="mf-route-val">', unsafe_allow_html=True)
+        origin_label = st.selectbox("From", AIRPORT_LABELS, key="t_origin",
+            index=AIRPORT_LABELS.index(cur_orig), label_visibility="collapsed")
         st.markdown('</div></div>', unsafe_allow_html=True)
-        origin_code = AIRPORTS[origin_label]
-        origin_city = origin_label.split(" —")[0]
-
-        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">To</span><div class="mf-route-val">',
-                    unsafe_allow_html=True)
-        dest_label = st.selectbox("To", AIRPORT_LABELS,
-            index=AIRPORT_LABELS.index(cur_dest),
-            key="m_dest_sel", label_visibility="collapsed")
+        origin_code = AIRPORTS[origin_label]; origin_city = origin_label.split(" —")[0]
+        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">To</span><div class="mf-route-val">', unsafe_allow_html=True)
+        dest_label = st.selectbox("To", AIRPORT_LABELS, key="t_dest",
+            index=AIRPORT_LABELS.index(cur_dest), label_visibility="collapsed")
         st.markdown('</div></div>', unsafe_allow_html=True)
-        dest_code = AIRPORTS[dest_label]
-        dest_city = dest_label.split(" —")[0]
-
-        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">Type</span><div class="mf-route-val">',
-                    unsafe_allow_html=True)
-        trip_type = mf_seg(["Round trip", "One way"], "m_trip_type", "mf_tt", n_cols=2)
+        dest_code = AIRPORTS[dest_label]; dest_city = dest_label.split(" —")[0]
+        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">Type</span><div class="mf-route-val">', unsafe_allow_html=True)
+        trip_type = seg(["Round trip", "One way"], "t_trip_type", "ttt", n_cols=2)
         st.markdown('</div></div>', unsafe_allow_html=True)
         is_roundtrip = trip_type == "Round trip"
-
-        st.markdown('</div></div>', unsafe_allow_html=True)
+        mf_close()
     else:
-        cur_dest = st.session_state.get("m_dest_sel", "Tokyo — Narita (NRT)")
-        dest_code_prev = AIRPORTS.get(cur_dest, "—")
-        st.markdown(
-            f'<div class="mf-section">'
-            f'<div class="mf-header">'
-            f'<span class="mf-header-label">Destination</span>'
-            f'<span class="mf-header-value">{dest_code_prev}</span>'
-            f'</div><div class="mf-body">',
-            unsafe_allow_html=True)
-        dest_label = st.selectbox("Destination", AIRPORT_LABELS,
-            index=AIRPORT_LABELS.index(cur_dest),
-            key="m_dest_sel", label_visibility="collapsed")
-        st.markdown('</div></div>', unsafe_allow_html=True)
-        dest_city   = dest_label.split(" —")[0]
-        dest_code   = AIRPORTS[dest_label]
-        origin_city = ""; origin_code = ""
-        is_roundtrip = False
+        cur_dest = st.session_state.get("t_dest", "Tokyo — Narita (NRT)")
+        mf_open("Destination", AIRPORTS.get(cur_dest, "—"))
+        dest_label = st.selectbox("Destination", AIRPORT_LABELS, key="t_dest",
+            index=AIRPORT_LABELS.index(cur_dest), label_visibility="collapsed")
+        mf_close()
+        dest_city = dest_label.split(" —")[0]; dest_code = AIRPORTS[dest_label]
+        origin_city = ""; origin_code = ""; is_roundtrip = False
 
-    # ── DATES ──
-    dep_val = st.session_state.get("m_depart_val", date(2026, 6, 10))
-    ret_val = st.session_state.get("m_return_val", date(2026, 6, 20))
-    ci_val  = st.session_state.get("m_checkin_val", date(2026, 6, 10))
-    co_val  = st.session_state.get("m_checkout_val", date(2026, 6, 15))
+    # ── Dates ──
+    dep_val = st.session_state.get("t_dep_val", date(2026, 6, 10))
+    ret_val = st.session_state.get("t_ret_val", date(2026, 6, 20))
+    ci_val  = st.session_state.get("t_ci_val",  date(2026, 6, 10))
+    co_val  = st.session_state.get("t_co_val",  date(2026, 6, 15))
+    if include_flight:
+        dates_prev = (f"{dep_val.strftime('%b %d')} – {ret_val.strftime('%b %d')}"
+                      if is_roundtrip else dep_val.strftime('%b %d, %Y'))
+    else:
+        dates_prev = f"{ci_val.strftime('%b %d')} – {co_val.strftime('%b %d')}"
+    mf_open("Dates", dates_prev)
     if include_flight:
         if is_roundtrip:
-            dates_preview = f"{dep_val.strftime('%b %d')} – {ret_val.strftime('%b %d')}"
-        else:
-            dates_preview = dep_val.strftime('%b %d, %Y')
-    else:
-        dates_preview = f"{ci_val.strftime('%b %d')} – {co_val.strftime('%b %d')}"
-
-    st.markdown(
-        f'<div class="mf-section">'
-        f'<div class="mf-header">'
-        f'<span class="mf-header-label">Dates</span>'
-        f'<span class="mf-header-value">{dates_preview}</span>'
-        f'</div><div class="mf-body">',
-        unsafe_allow_html=True)
-
-    if include_flight:
-        if is_roundtrip:
-            col_a, col_b = st.columns(2)
-            with col_a:
+            ca, cb = st.columns(2)
+            with ca:
                 depart_date = st.date_input("Depart", value=dep_val,
-                                            min_value=date.today(), key="m_depart_date")
-                st.session_state.m_depart_val = depart_date
-            with col_b:
+                    min_value=date.today(), key="t_depart")
+                st.session_state.t_dep_val = depart_date
+            with cb:
                 return_date = st.date_input("Return",
-                                            value=max(ret_val, depart_date + timedelta(days=1)),
-                                            min_value=depart_date + timedelta(days=1),
-                                            key="m_return_date")
-                st.session_state.m_return_val = return_date
+                    value=max(ret_val, depart_date + timedelta(days=1)),
+                    min_value=depart_date + timedelta(days=1), key="t_return")
+                st.session_state.t_ret_val = return_date
             flight_nights = (return_date - depart_date).days
         else:
             depart_date = st.date_input("Departure", value=dep_val,
-                                        min_value=date.today(), key="m_depart_date")
-            st.session_state.m_depart_val = depart_date
-            return_date   = None
-            flight_nights = None
+                min_value=date.today(), key="t_depart")
+            st.session_state.t_dep_val = depart_date
+            return_date = None; flight_nights = None
     else:
-        col_a, col_b = st.columns(2)
-        with col_a:
+        ca, cb = st.columns(2)
+        with ca:
             checkin_date = st.date_input("Check-in", value=ci_val,
-                                         min_value=date.today(), key="m_checkin_date")
-            st.session_state.m_checkin_val = checkin_date
-        with col_b:
+                min_value=date.today(), key="t_checkin")
+            st.session_state.t_ci_val = checkin_date
+        with cb:
             checkout_date = st.date_input("Check-out",
-                                          value=max(co_val, checkin_date + timedelta(days=1)),
-                                          min_value=checkin_date + timedelta(days=1),
-                                          key="m_checkout_date")
-            st.session_state.m_checkout_val = checkout_date
-        depart_date   = checkin_date
-        return_date   = None
+                value=max(co_val, checkin_date + timedelta(days=1)),
+                min_value=checkin_date + timedelta(days=1), key="t_checkout")
+            st.session_state.t_co_val = checkout_date
+        depart_date = checkin_date; return_date = None
         flight_nights = (checkout_date - checkin_date).days
+    mf_close()
 
-    st.markdown('</div></div>', unsafe_allow_html=True)
-
-    # ── PREFERENCES ──
-    cur_cabin  = st.session_state.get("m_cabin", "Economy")
-    cur_hs     = st.session_state.get("m_hotel_style", "Standard")
+    # ── Preferences ──
+    cur_cabin = st.session_state.get("t_cabin", "Economy")
+    cur_hs    = st.session_state.get("t_hotel_style", "Standard")
     cabin_disp = {"Prem. Eco": "Premium Economy"}.get(cur_cabin, cur_cabin)
-    if include_flight and include_hotel:
-        pref_preview = f"{cabin_disp} · {cur_hs}"
-    elif include_flight:
-        pref_preview = cabin_disp
-    else:
-        pref_preview = cur_hs
-
-    st.markdown(
-        f'<div class="mf-section">'
-        f'<div class="mf-header">'
-        f'<span class="mf-header-label">Preferences</span>'
-        f'<span class="mf-header-value">{pref_preview}</span>'
-        f'</div><div class="mf-body">',
-        unsafe_allow_html=True)
-
+    if include_flight and include_hotel: pref_prev = f"{cabin_disp} · {cur_hs}"
+    elif include_flight: pref_prev = cabin_disp
+    else: pref_prev = cur_hs
+    mf_open("Preferences", pref_prev)
     if include_flight:
-        st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .35rem;">Cabin</p>',
-                    unsafe_allow_html=True)
-        cabin_raw = mf_seg(["Economy", "Prem. Eco", "Business", "First"],
-                           "m_cabin", "mf_cab", n_cols=4)
+        st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .35rem;">Cabin</p>', unsafe_allow_html=True)
+        cabin_raw = seg(["Economy", "Prem. Eco", "Business", "First"], "t_cabin", "tcab", n_cols=4)
         cabin = {"Prem. Eco": "Premium Economy"}.get(cabin_raw, cabin_raw)
         st.markdown('<div style="height:.4rem"></div>', unsafe_allow_html=True)
     else:
         cabin = "Economy"
-
     if include_hotel:
-        st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .35rem;">Hotel style</p>',
-                    unsafe_allow_html=True)
-        hotel_style = mf_seg(["Budget", "Standard", "Luxury"],
-                              "m_hotel_style", "mf_hs", n_cols=3)
+        st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .35rem;">Hotel style</p>', unsafe_allow_html=True)
+        hotel_style = seg(["Budget", "Standard", "Luxury"], "t_hotel_style", "ths", n_cols=3)
         st.markdown('<div style="height:.4rem"></div>', unsafe_allow_html=True)
-        hotel_nights = flight_nights if (include_flight and is_roundtrip) else (
-            st.number_input("Nights", min_value=1, max_value=60, value=5,
-                            key="m_hotel_nights_input") if include_flight else flight_nights)
+        if include_flight and is_roundtrip: hotel_nights = flight_nights
+        elif include_flight: hotel_nights = st.number_input("Nights", min_value=1, max_value=60, value=5, key="t_hotel_nights")
+        else: hotel_nights = flight_nights
     else:
-        hotel_style  = "Standard"
-        hotel_nights = None
-
-    pref_labels = {1: "Max value", 3: "Mostly value", 5: "Balanced",
-                   7: "Mostly comfort", 10: "Max comfort"}
-    st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .1rem;">Priority</p>',
-                unsafe_allow_html=True)
-    val_exp = st.slider("Priority", 1, 10,
-                        st.session_state.get("m_val_exp", 5),
-                        key="m_val_exp_slider", label_visibility="collapsed")
-    st.session_state.m_val_exp = val_exp
-    nearest = min(pref_labels, key=lambda x: abs(x - val_exp))
-    st.markdown(
-        f'<p style="font-size:11px;color:#888;text-align:center;margin:-.1rem 0 0;">' +
-        pref_labels[nearest] + '</p>', unsafe_allow_html=True)
-
-    st.markdown('</div></div>', unsafe_allow_html=True)
+        hotel_style = "Standard"; hotel_nights = None
+    pref_map = {1:"Max value",3:"Mostly value",5:"Balanced",7:"Mostly comfort",10:"Max comfort"}
+    st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .1rem;">Priority</p>', unsafe_allow_html=True)
+    val_exp = st.slider("Priority", 1, 10, st.session_state.get("t_val_exp", 5),
+                        key="t_val_exp_sl", label_visibility="collapsed")
+    st.session_state.t_val_exp = val_exp
+    nearest = min(pref_map, key=lambda x: abs(x - val_exp))
+    st.markdown(f'<p style="font-size:11px;color:#888;text-align:center;margin:-.1rem 0 0;">{pref_map[nearest]}</p>', unsafe_allow_html=True)
+    mf_close()
 
     # ── CTA ──
     st.markdown('<div style="height:.35rem"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="m-cta">', unsafe_allow_html=True)
-    run = st.button("Find My Best Trip", type="primary",
-                    use_container_width=True, key="m_run")
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)  # /m-card
+    run = st.button("Find My Best Trip", type="primary", use_container_width=True, key="t_run")
 
-    # ── Build params ──
+    # ── Build params & render ──
     if include_flight and is_roundtrip and return_date:
         dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
     elif include_flight:
@@ -2097,16 +1735,16 @@ def page_trip_mobile():
         return
 
     params = {
-        'origin_city':    origin_city,    'origin_code': origin_code,
-        'dest_city':      dest_city,      'dest_code':   dest_code,
-        'cabin':          cabin,          'hotel_style': hotel_style,
-        'val_exp':        val_exp,        'dates_str':   dates_str,
-        'nights':         nights,         'is_roundtrip': is_roundtrip,
+        'origin_city': origin_city, 'origin_code': origin_code,
+        'dest_city':   dest_city,   'dest_code':   dest_code,
+        'cabin':       cabin,       'hotel_style': hotel_style,
+        'val_exp':     val_exp,     'dates_str':   dates_str,
+        'nights':      nights,      'is_roundtrip': is_roundtrip,
         'include_flight': include_flight, 'include_hotel': include_hotel,
     }
 
     if mock_mode:
-        _render_results_mobile(MOCK, params, is_mock=True)
+        _render_results_desktop(MOCK, params, is_mock=True)
     elif not api_key:
         st.warning("This app is not yet configured. Please ask the administrator to set up the API key.")
     else:
@@ -2114,28 +1752,12 @@ def page_trip_mobile():
             try:
                 data = _build_trip_data(profile, params)
                 result = _call_claude(api_key, data, params)
-                _render_results_mobile(result, params)
-            except json.JSONDecodeError as e:
-                st.error(f"Unexpected response: {e}")
-            except anthropic.AuthenticationError:
-                st.error("API key issue — please contact the administrator.")
-            except anthropic.APIError as e:
-                st.error(f"Service error: {e}")
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                _render_results_desktop(result, params)
+            except json.JSONDecodeError as e: st.error(f"Unexpected response: {e}")
+            except anthropic.AuthenticationError: st.error("API key issue — please contact the administrator.")
+            except anthropic.APIError as e: st.error(f"Service error: {e}")
+            except Exception as e: st.error(f"Something went wrong: {e}")
 
-
-
-def page_trip():
-    st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
-    page_trip_desktop()
-    st.markdown('</div><div class="mobile-only">', unsafe_allow_html=True)
-    page_trip_mobile()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────
-#  PAGE: ADMIN
-# ─────────────────────────────────────────────
 def page_admin():
     """
     Admin panel — access controlled by a password stored in st.secrets.
@@ -2156,10 +1778,17 @@ def page_admin():
     master_key = get_secret("admin", "api_key")
     secrets_configured = bool(admin_pw and master_key)
 
+    # On mobile, wrap everything in the card shell
+    if IS_MOBILE:
+        st.markdown('<div class="m-card">', unsafe_allow_html=True)
+        st.markdown('<p class="m-card-title">Admin</p>', unsafe_allow_html=True)
+        _render_mobile_tabs()
+
     # ── Login wall ──
     if not st.session_state.admin_authed:
-        st.markdown("## Admin")
-        st.markdown('<div style="max-width:360px;">', unsafe_allow_html=True)
+        if not IS_MOBILE:
+            st.markdown("## Admin")
+            st.markdown('<div style="max-width:360px;">', unsafe_allow_html=True)
 
         if not secrets_configured:
             st.error(
@@ -2168,25 +1797,37 @@ def page_admin():
                 "api_key  = \"sk-ant-...\"\n```\n\n"
                 "Go to: Streamlit Cloud → your app → Settings → Secrets"
             )
+            if IS_MOBILE: st.markdown('</div>', unsafe_allow_html=True)
             return
 
         pw_input = st.text_input("Admin password", type="password",
                                  placeholder="Enter password", key="admin_pw_input")
-        if st.button("Log in", type="primary", key="admin_login_btn"):
+        if st.button("Log in", type="primary", key="admin_login_btn",
+                     use_container_width=IS_MOBILE):
             if pw_input == admin_pw:
                 st.session_state.admin_authed = True
                 st.rerun()
             else:
                 st.error("Incorrect password.")
-        st.markdown('</div>', unsafe_allow_html=True)
+
+        if not IS_MOBILE:
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('</div>', unsafe_allow_html=True)
         return
 
     # ── Authenticated ──
-    col_title, col_logout = st.columns([4, 1])
-    with col_title:
-        st.markdown("## Admin Panel")
-    with col_logout:
-        if st.button("Log out", key="admin_logout"):
+    if not IS_MOBILE:
+        col_title, col_logout = st.columns([4, 1])
+        with col_title:
+            st.markdown("## Admin Panel")
+        with col_logout:
+            if st.button("Log out", key="admin_logout"):
+                st.session_state.admin_authed = False
+                st.session_state.page = "profile"
+                st.rerun()
+    else:
+        if st.button("Log out", key="admin_logout", use_container_width=True):
             st.session_state.admin_authed = False
             st.session_state.page = "profile"
             st.rerun()
@@ -2196,29 +1837,49 @@ def page_admin():
 
     # ── Section 1: Mock mode ──
     st.markdown("### Mock mode")
-    st.caption("When ON, all users see sample data instead of live API results. Persists across sessions.")
+    st.caption("Override the per-user mock mode toggle globally for all sessions.")
 
-    current = get_admin_setting("mock_override", False)
-    st.session_state.mock_override = current
-    status_label = "🟢 ON — showing sample data" if current else "⚪ OFF — using live API"
-    st.info(f"Mock mode is currently: **{status_label}**")
+    current = st.session_state.mock_override
+    label   = {None: "Follow user setting (default)", True: "Force ON for all users",
+                False: "Force OFF for all users"}.get(current, "Unknown")
+    st.info(f"Current override: **{label}**")
 
-    def _set_mock(value):
-        set_admin_setting("mock_override", value)
-        st.session_state.mock_override = value
-        st.rerun()
-
-    mc1, mc2 = st.columns(2)
-    with mc1:
-        if st.button("Mock ON", use_container_width=True,
+    if IS_MOBILE:
+        if st.button("Follow user setting", use_container_width=True,
+                     type="primary" if current is None else "secondary",
+                     key="mock_none"):
+            st.session_state.mock_override = None
+            st.rerun()
+        if st.button("Force mock ON", use_container_width=True,
                      type="primary" if current is True else "secondary",
                      key="mock_on"):
-            _set_mock(True)
-    with mc2:
-        if st.button("Mock OFF", use_container_width=True,
+            st.session_state.mock_override = True
+            st.rerun()
+        if st.button("Force mock OFF", use_container_width=True,
                      type="primary" if current is False else "secondary",
                      key="mock_off"):
-            _set_mock(False)
+            st.session_state.mock_override = False
+            st.rerun()
+    else:
+        mc1, mc2, mc3 = st.columns(3)
+        with mc1:
+            if st.button("Follow user setting", use_container_width=True,
+                         type="primary" if current is None else "secondary",
+                         key="mock_none"):
+                st.session_state.mock_override = None
+                st.rerun()
+        with mc2:
+            if st.button("Force mock ON", use_container_width=True,
+                         type="primary" if current is True else "secondary",
+                         key="mock_on"):
+                st.session_state.mock_override = True
+                st.rerun()
+        with mc3:
+            if st.button("Force mock OFF", use_container_width=True,
+                         type="primary" if current is False else "secondary",
+                         key="mock_off"):
+                st.session_state.mock_override = False
+                st.rerun()
 
     st.markdown("---")
 
@@ -2243,10 +1904,15 @@ def page_admin():
     freshness = "Stale — older than 25 hours" if stale else "Fresh"
     cost      = get_metadata().get("refresh_cost_usd", "unknown")
 
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
-    col_b.metric("Status",         freshness)
-    col_c.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
+    if IS_MOBILE:
+        st.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
+        st.metric("Status",         freshness)
+        st.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
+    else:
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
+        col_b.metric("Status",         freshness)
+        col_c.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
 
     st.markdown("**What gets refreshed:**")
     st.markdown(
@@ -2324,37 +1990,43 @@ Navigate here via the Admin nav button and enter your password.
 - The admin route is not hidden by URL — it's protected by password only
 """)
 
+    if IS_MOBILE:
+        st.markdown('</div>', unsafe_allow_html=True)  # /m-card
+
 # ─────────────────────────────────────────────
 #  NAV + ROUTER
 # ─────────────────────────────────────────────
 
-# Title: always rendered. CSS hides it on mobile (in-card titles take over).
-st.markdown('<div class="mobile-hide-title">', unsafe_allow_html=True)
-st.markdown("# AI Loyalty Optimizer")
-st.markdown('</div>', unsafe_allow_html=True)
+if IS_MOBILE:
+    # Hide the title on mobile (the card titles take over) — wrap so CSS rule applies
+    st.markdown('<div class="mobile-hide-title">', unsafe_allow_html=True)
+    st.markdown("# AI Loyalty Optimizer")
+    st.markdown('</div>', unsafe_allow_html=True)
+else:
+    # Desktop nav — unchanged from original
+    st.markdown("# AI Loyalty Optimizer")
 
-# Desktop nav: always rendered, hidden on mobile via CSS.
-st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
-nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
-with nav_col1:
-    if st.button("My Profile", key="nav_profile", use_container_width=True,
-                 type="primary" if st.session_state.page == "profile" else "secondary"):
-        st.session_state.page = "profile"
-        st.rerun()
-with nav_col2:
-    if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
-                 type="primary" if st.session_state.page == "trip" else "secondary"):
-        st.session_state.page = "trip"
-        st.rerun()
-with nav_admin:
-    if st.button("Admin", key="nav_admin", use_container_width=True,
-                 type="primary" if st.session_state.page == "admin" else "secondary"):
-        st.session_state.page = "admin"
-        st.rerun()
-st.markdown(
-    "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
-    unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+    nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
+    with nav_col1:
+        if st.button("My Profile", key="nav_profile", use_container_width=True,
+                     type="primary" if st.session_state.page == "profile" else "secondary"):
+            st.session_state.page = "profile"
+            st.rerun()
+    with nav_col2:
+        if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
+                     type="primary" if st.session_state.page == "trip" else "secondary"):
+            st.session_state.page = "trip"
+            st.rerun()
+    with nav_admin:
+        admin_label = "Admin"
+        if st.button(admin_label, key="nav_admin", use_container_width=True,
+                     type="primary" if st.session_state.page == "admin" else "secondary"):
+            st.session_state.page = "admin"
+            st.rerun()
+
+    st.markdown(
+        "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
+        unsafe_allow_html=True)
 
 # Route to the active page
 if st.session_state.page == "profile":
