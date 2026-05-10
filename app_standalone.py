@@ -151,6 +151,16 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
+/* Hide scope tile trigger buttons — JS clicks them, user never sees them */
+div[data-scope-btns] {
+    position: absolute !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    z-index: -1 !important;
+}
+
 /* Seg button rows — force single row, never stack */
 .m-seg > div, .mf-seg > div {
     display: flex !important;
@@ -1681,110 +1691,97 @@ def page_trip():
 
     def scope_tiles():
         """
-        Pure-HTML icon tiles. Each tile is a styled <div> that JS clicks
-        a corresponding hidden st.button when tapped — no navigation, no radio.
+        Pure HTML icon tiles — clicking triggers a hidden st.button via JS.
+        No visible buttons, no radio. Icons use proper emoji rendered as SVG text.
         """
-        # Clear any stale query param from previous approach
-        if "scope" in st.query_params:
-            val = st.query_params.get("scope")
-            if val in ["Flight + Hotel", "Flight", "Hotel"]:
-                st.session_state["t_scope"] = val
-            st.query_params.clear()
-            st.rerun()
-
         current = st.session_state.get("t_scope", "Flight + Hotel")
 
-        # SVGs — proper top-down plane and building icons
-        SVGS = {
-            "Flight + Hotel": """<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="40" height="40">
-  <!-- Airplane (top-down view) -->
-  <path d="M26 6 C26 6 22 14 20 22 L10 20 L10 24 L20 25 L19 34 L15 35 L15 38 L21 37 L26 46 L31 37 L37 38 L37 35 L33 34 L32 25 L42 24 L42 20 L32 22 C30 14 26 6 26 6Z"
-        fill="ICONCOLOR" opacity=".9"/>
-</svg>""",
-            "Flight": """<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="40" height="40">
-  <!-- Airplane (top-down view, larger) -->
-  <path d="M26 4 C26 4 21 14 19 23 L7 21 L7 26 L19 28 L18 38 L13 39 L13 43 L20 41 L26 48 L32 41 L39 43 L39 39 L34 38 L33 28 L45 26 L45 21 L33 23 C31 14 26 4 26 4Z"
-        fill="ICONCOLOR" opacity=".9"/>
-</svg>""",
-            "Hotel": """<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="40" height="40">
-  <rect x="6" y="22" width="40" height="26" rx="2" fill="ICONCOLOR" opacity=".15" stroke="ICONCOLOR" stroke-width="2"/>
-  <rect x="11" y="28" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
-  <rect x="22.5" y="28" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
-  <rect x="34" y="28" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
-  <rect x="11" y="37" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
-  <rect x="34" y="37" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
-  <rect x="20" y="36" width="12" height="12" rx="1" fill="ICONCOLOR" opacity=".6"/>
-  <path d="M6 22L26 8l20 14" stroke="ICONCOLOR" stroke-width="2.5" stroke-linejoin="round" fill="none"/>
-</svg>""",
-        }
+        # Each tile: (label, icon_html for inactive, icon_html for active)
+        # Using clean, well-tested SVG paths for plane and building
 
-        LABELS = ["Flight + Hotel", "Flight", "Hotel"]
-        TILE_IDS = ["scope_tile_0", "scope_tile_1", "scope_tile_2"]
+        PLANE_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+  <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"
+        fill="IC"/>
+</svg>"""
 
-        # ── Render pure HTML tiles ──
-        tiles_html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:4px;">'
-        for i, label in enumerate(LABELS):
+        HOTEL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+  <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="IC"/>
+</svg>"""
+
+        PLANE_SM = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22">
+  <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"
+        fill="IC"/>
+</svg>"""
+
+        HOTEL_SM = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22">
+  <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="IC"/>
+</svg>"""
+
+        TILES = [
+            ("Flight + Hotel",
+             f'<div style="display:flex;gap:6px;align-items:center;justify-content:center;">' +
+             PLANE_SM + HOTEL_SM +
+             '</div>'),
+            ("Flight",  PLANE_SVG),
+            ("Hotel",   HOTEL_SVG),
+        ]
+
+        tiles_html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:2px;">' 
+        for label, icon_tpl in TILES:
             active  = label == current
             bg      = "#111111" if active else "#ffffff"
             border  = "#111111" if active else "#e0e0e0"
-            ic_col  = "#ffffff" if active else "#666666"
-            lbl_col = "#ffffff" if active else "#333333"
-            svg     = SVGS[label].replace("ICONCOLOR", ic_col)
-            tiles_html += f"""
-<div class="scope-tile-html" data-label="{label}"
-     style="background:{bg};border:2px solid {border};border-radius:14px;
-            display:flex;flex-direction:column;align-items:center;
-            justify-content:center;gap:8px;padding:18px 6px 14px;
-            cursor:pointer;-webkit-tap-highlight-color:transparent;
-            transition:background .12s,border-color .12s;">
-  {svg}
-  <span style="font-size:11.5px;font-weight:600;color:{lbl_col};
-               text-align:center;line-height:1.25;
-               font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-    {label}
-  </span>
+            ic      = "#ffffff" if active else "#555555"
+            lc      = "#ffffff" if active else "#222222"
+            fw      = "700"     if active else "500"
+            icon    = icon_tpl.replace("IC", ic)
+            tiles_html += f"""<div class="scope-tile-html" data-label="{label}"
+  style="background:{bg};border:2px solid {border};border-radius:14px;
+         display:flex;flex-direction:column;align-items:center;justify-content:center;
+         gap:10px;padding:20px 6px 16px;cursor:pointer;
+         -webkit-tap-highlight-color:transparent;transition:background .12s,border-color .12s;
+         user-select:none;">
+  {icon}
+  <span style="font-size:11px;font-weight:{fw};color:{lc};text-align:center;line-height:1.2;
+               font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">{label}</span>
 </div>"""
-        tiles_html += "</div>"
+        tiles_html += '</div>'
         st.markdown(tiles_html, unsafe_allow_html=True)
 
-        # ── JS: clicking a tile finds + clicks the matching hidden button ──
+        # Wire tiles to hidden st.buttons via JS (buttons are invisible via CSS)
         st.markdown("""
 <script>
 (function(){
-  function wireTiles(){
+  function wire(){
     var tiles = document.querySelectorAll('.scope-tile-html');
-    if(!tiles.length){ setTimeout(wireTiles, 100); return; }
+    if(!tiles.length){ setTimeout(wire,80); return; }
     tiles.forEach(function(tile){
       tile.onclick = function(){
-        var label = tile.getAttribute('data-label');
-        // Find hidden buttons by their text content
-        var btns = document.querySelectorAll('div[data-tile-hidden] button');
-        btns.forEach(function(btn){
-          if(btn.innerText.trim() === label) btn.click();
+        var lbl = tile.getAttribute('data-label');
+        var wrap = document.querySelector('[data-scope-btns]');
+        if(!wrap) return;
+        wrap.querySelectorAll('button').forEach(function(b){
+          if(b.innerText.trim()===lbl) b.click();
         });
       };
     });
   }
-  wireTiles();
+  wire();
 })();
-</script>
-""", unsafe_allow_html=True)
+</script>""", unsafe_allow_html=True)
 
-        # ── Hidden st.buttons ──
-        st.markdown('<div data-tile-hidden="1" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;overflow:hidden;">', unsafe_allow_html=True)
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("Flight + Hotel", key="tile_fh", use_container_width=True):
-                st.session_state["t_scope"] = "Flight + Hotel"
-                st.rerun()
-        with col2:
-            if st.button("Flight", key="tile_fl", use_container_width=True):
-                st.session_state["t_scope"] = "Flight"
-                st.rerun()
-        with col3:
-            if st.button("Hotel", key="tile_ht", use_container_width=True):
-                st.session_state["t_scope"] = "Hotel"
-                st.rerun()
+        # Hidden buttons — CSS makes them invisible but JS can still click them
+        st.markdown('<div data-scope-btns="1">', unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("Flight + Hotel", key="tile_fh"):
+                st.session_state["t_scope"] = "Flight + Hotel"; st.rerun()
+        with c2:
+            if st.button("Flight", key="tile_fl"):
+                st.session_state["t_scope"] = "Flight"; st.rerun()
+        with c3:
+            if st.button("Hotel", key="tile_ht"):
+                st.session_state["t_scope"] = "Hotel"; st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
         return st.session_state.get("t_scope", "Flight + Hotel")
