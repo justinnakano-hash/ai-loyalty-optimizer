@@ -151,50 +151,6 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
-/* ── Scope icon tiles ── */
-/* Each tile = a .scope-tile-wrap div (icon) + st.button below it in the same column.
-   CSS pulls the button up to sit flush under the icon div, making them one unit. */
-.scope-tile-wrap {
-    background: #fff;
-    border: 2px solid #e8e8e8;
-    border-bottom: none;
-    border-radius: 14px 14px 0 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 18px 8px 10px;
-    margin-bottom: 0;
-    transition: border-color .15s, background .15s;
-}
-.scope-tile-wrap.active {
-    background: #111;
-    border-color: #111;
-}
-.scope-tile-wrap + div button {
-    border-radius: 0 0 14px 14px !important;
-    border-top: none !important;
-    margin-top: -1px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    min-height: 38px !important;
-    padding-top: 6px !important;
-    padding-bottom: 10px !important;
-}
-/* Active tile button */
-.scope-tile-wrap.active + div button {
-    background: #111 !important;
-    color: #fff !important;
-    border-color: #111 !important;
-}
-/* Inactive tile button */
-.scope-tile-wrap:not(.active) + div button {
-    background: #fff !important;
-    color: #555 !important;
-    border-color: #e8e8e8 !important;
-}
-.scope-tile-icon { line-height: 0; }
-.scope-tile-icon svg { display: block; width: 38px; height: 38px; }
-
 /* Seg button rows — force single row, never stack */
 .m-seg > div, .mf-seg > div {
     display: flex !important;
@@ -1724,69 +1680,91 @@ def page_trip():
         return st.session_state.get(state_key, options[0])
 
     def scope_tiles():
-        """Three icon tiles as st.button calls. Selected = primary, others = secondary.
-        CSS transforms Streamlit buttons into styled square tiles with SVG icons."""
+        """Pure HTML icon tiles. Clicking sets a query param → Streamlit reruns."""
+        # Read selection from query params (set by tile click) or session state
+        qp = st.query_params.get("scope", None)
+        if qp and qp in ["Flight + Hotel", "Flight", "Hotel"]:
+            st.session_state["t_scope"] = qp
+            st.query_params.clear()
+            st.rerun()
+
         current = st.session_state.get("t_scope", "Flight + Hotel")
 
-        TILE_DATA = [
-            ("Flight + Hotel", "tile_fh", """<svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M4 27l4.5-1.5 6.5 6.5 13-15-1.5-1.5-12 9.5-4.5-1L7 28l4 4-7 2.5V27z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-  <line x1="4" y1="37" x2="26" y2="37" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-  <rect x="27" y="20" width="13" height="15" rx="1.5" stroke="currentColor" stroke-width="1.8"/>
-  <rect x="29.5" y="24" width="3" height="3" rx=".4" fill="currentColor" opacity=".6"/>
-  <rect x="34.5" y="24" width="3" height="3" rx=".4" fill="currentColor" opacity=".6"/>
-  <rect x="29.5" y="29" width="3" height="3" rx=".4" fill="currentColor" opacity=".6"/>
-  <rect x="34.5" y="29" width="3" height="3" rx=".4" fill="currentColor" opacity=".6"/>
-  <path d="M27 20l6.5-5 6.5 5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        # Build the URL for each tile click — appends ?scope=VALUE to current URL
+        def tile_url(val):
+            import urllib.parse
+            return "?" + urllib.parse.urlencode({"scope": val})
+
+        TILES = [
+            ("Flight + Hotel", tile_url("Flight + Hotel"), """
+<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="44" height="44">
+  <path d="M4 32l5-2 7.5 7.5L31 19l-2-2-13.5 10.5-5-1.5L7 30l4.5 4.5L4 37V32z"
+        stroke="ICONCOLOR" stroke-width="2" stroke-linejoin="round"/>
+  <line x1="4" y1="42" x2="28" y2="42" stroke="ICONCOLOR" stroke-width="2" stroke-linecap="round"/>
+  <rect x="30" y="22" width="16" height="18" rx="2" stroke="ICONCOLOR" stroke-width="2"/>
+  <rect x="32.5" y="27" width="4" height="4" rx=".6" fill="ICONCOLOR" opacity=".7"/>
+  <rect x="38.5" y="27" width="4" height="4" rx=".6" fill="ICONCOLOR" opacity=".7"/>
+  <rect x="32.5" y="33" width="4" height="4" rx=".6" fill="ICONCOLOR" opacity=".7"/>
+  <rect x="38.5" y="33" width="4" height="4" rx=".6" fill="ICONCOLOR" opacity=".7"/>
+  <path d="M30 22l8-6 8 6" stroke="ICONCOLOR" stroke-width="2" stroke-linejoin="round"/>
 </svg>"""),
-            ("Flight", "tile_fl", """<svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M4 29l5-2 7 7 16-18.5-1.8-1.8-14.5 11.5-5.5-1.5L7 28l4.5 4.5L4 35V29z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-  <line x1="4" y1="39" x2="30" y2="39" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            ("Flight", tile_url("Flight"), """
+<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="44" height="44">
+  <path d="M4 34l5.5-2 8 8 18-21-2-2-15 12-6-1.5L9 33l5 5L4 41V34z"
+        stroke="ICONCOLOR" stroke-width="2" stroke-linejoin="round"/>
+  <line x1="4" y1="44" x2="32" y2="44" stroke="ICONCOLOR" stroke-width="2" stroke-linecap="round"/>
 </svg>"""),
-            ("Hotel", "tile_ht", """<svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="6" y="19" width="32" height="22" rx="1.5" stroke="currentColor" stroke-width="1.8"/>
-  <rect x="11" y="24" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
-  <rect x="19.5" y="24" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
-  <rect x="28" y="24" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
-  <rect x="11" y="31" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
-  <rect x="28" y="31" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
-  <rect x="18" y="31" width="8" height="10" rx=".8" fill="currentColor" opacity=".4"/>
-  <path d="M6 19L22 8l16 11" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            ("Hotel", tile_url("Hotel"), """
+<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="44" height="44">
+  <rect x="6" y="22" width="40" height="26" rx="2" stroke="ICONCOLOR" stroke-width="2"/>
+  <rect x="12" y="28" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
+  <rect x="23" y="28" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
+  <rect x="34" y="28" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
+  <rect x="12" y="37" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
+  <rect x="34" y="37" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
+  <rect x="21" y="37" width="10" height="11" rx="1" fill="ICONCOLOR" opacity=".45"/>
+  <path d="M6 22L26 9l20 13" stroke="ICONCOLOR" stroke-width="2" stroke-linejoin="round"/>
 </svg>"""),
         ]
 
-        # Inject SVGs as CSS background via data URIs is unreliable — instead
-        # place each SVG as a data attribute on the column wrapper and let CSS
-        # use the button's :before. Actually simplest: render SVG as markdown
-        # ABOVE the button column, then overlap with CSS.
-        #
-        # Cleanest approach that works in Streamlit: render the whole tile
-        # (icon + label + selected state) as a styled st.button by injecting
-        # the SVG into the button label via HTML — Streamlit renders button
-        # labels as plain text, so use a sibling markdown + CSS to position it.
-        #
-        # Real approach: 3 columns, each column has an st.button.
-        # CSS targets .scope-tile-wrap to stack an SVG image above the button.
-
-        cols = st.columns(3)
-        for i, (label, btn_key, svg) in enumerate(TILE_DATA):
-            with cols[i]:
-                is_active = label == current
-                # SVG rendered above button in same column
-                color = "#ffffff" if is_active else "#555555"
-                colored_svg = svg.replace('stroke="currentColor"', f'stroke="{color}"') \
-                                  .replace('fill="currentColor"', f'fill="{color}"')
-                st.markdown(
-                    f'<div class="scope-tile-wrap{" active" if is_active else ""}">'
-                    f'<div class="scope-tile-icon">{colored_svg}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True)
-                if st.button(label, key=btn_key, use_container_width=True,
-                             type="primary" if is_active else "secondary"):
-                    st.session_state["t_scope"] = label
-                    st.rerun()
-
-        return st.session_state.get("t_scope", "Flight + Hotel")
+        tiles_html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:4px 0 6px;">'
+        for label, url, svg_raw in TILES:
+            active = label == current
+            bg      = "#111111" if active else "#ffffff"
+            border  = "#111111" if active else "#e0e0e0"
+            color   = "#ffffff" if active else "#555555"
+            lbl_col = "#ffffff" if active else "#333333"
+            svg = svg_raw.replace("ICONCOLOR", color)
+            tiles_html += f"""
+<a href="{url}" style="text-decoration:none;" target="_self">
+  <div style="
+    background:{bg};
+    border:2px solid {border};
+    border-radius:14px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    padding:16px 6px 14px;
+    cursor:pointer;
+    transition:all .15s;
+    -webkit-tap-highlight-color:transparent;
+  ">
+    {svg}
+    <span style="
+      font-size:11.5px;
+      font-weight:600;
+      color:{lbl_col};
+      text-align:center;
+      line-height:1.2;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    ">{label}</span>
+  </div>
+</a>"""
+        tiles_html += '</div>'
+        st.markdown(tiles_html, unsafe_allow_html=True)
+        return current
 
     def mf_open(label, value=""):
         val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
