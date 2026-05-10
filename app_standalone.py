@@ -1242,38 +1242,95 @@ The session stays authenticated until you log out or close the browser.
 
 cur_page = st.session_state.get("page", "profile")
 
-# Render compact header — title left, three nav buttons right
-# On mobile the buttons stack under the title but stay readable
-_logo_col, _nav_col = st.columns([2, 3])
-with _logo_col:
-    st.markdown(
-        "<p style='font-size:1.1rem;font-weight:700;color:#111;margin:.4rem 0 0;'>"
-        "AI Loyalty Optimizer</p>",
-        unsafe_allow_html=True)
-with _nav_col:
-    nb1, nb2, nb3 = st.columns(3)
-    with nb1:
-        if st.button(
-            "👤 Profile", key="nav_profile", use_container_width=True,
-            type="primary" if cur_page == "profile" else "secondary"
-        ):
-            st.session_state.page = "profile"; st.rerun()
-    with nb2:
-        if st.button(
-            "✈ Plan", key="nav_trip", use_container_width=True,
-            type="primary" if cur_page == "trip" else "secondary"
-        ):
-            st.session_state.page = "trip"; st.rerun()
-    with nb3:
-        if st.button(
-            "⚙ Admin", key="nav_admin", use_container_width=True,
-            type="primary" if cur_page == "admin" else "secondary"
-        ):
-            st.session_state.page = "admin"; st.rerun()
+# ── Handle nav selection from hamburger menu (query param) ──
+_nav_qp = st.query_params.get("nav", None)
+if _nav_qp in ("profile", "trip", "admin"):
+    st.session_state.page = _nav_qp
+    cur_page = _nav_qp
+    st.query_params.clear()
+    st.rerun()
 
-st.markdown(
-    "<hr style='margin:.35rem 0 1rem;border:none;border-top:1px solid #e8e8e8;'>",
-    unsafe_allow_html=True)
+# ── Page label for header ──
+_page_labels = {"profile": "My Profile", "trip": "Plan a Trip", "admin": "Admin"}
+_cur_label   = _page_labels.get(cur_page, "My Profile")
+
+# ── Hamburger nav — pure HTML, no Streamlit columns ──
+st.markdown(f"""
+<div style="display:flex;align-items:center;justify-content:space-between;
+            padding:.5rem 0 .75rem;position:relative;">
+
+  <!-- Hamburger button + dropdown -->
+  <div style="position:relative;">
+    <button id="hbtn" onclick="toggleMenu()"
+      style="background:none;border:1px solid #e5e7eb;border-radius:8px;
+             padding:7px 10px;cursor:pointer;display:flex;flex-direction:column;
+             gap:4px;align-items:center;justify-content:center;width:40px;height:40px;">
+      <span style="display:block;width:18px;height:2px;background:#374151;border-radius:1px;"></span>
+      <span style="display:block;width:18px;height:2px;background:#374151;border-radius:1px;"></span>
+      <span style="display:block;width:18px;height:2px;background:#374151;border-radius:1px;"></span>
+    </button>
+
+    <!-- Dropdown menu -->
+    <div id="hmenu"
+      style="display:none;position:absolute;top:48px;left:0;z-index:9999;
+             background:#fff;border:1px solid #e5e7eb;border-radius:12px;
+             min-width:180px;overflow:hidden;
+             box-shadow:0 4px 20px rgba(0,0,0,.10);">
+      <a href="?nav=profile"
+         style="display:flex;align-items:center;gap:10px;padding:13px 16px;
+                text-decoration:none;font-size:14px;font-weight:500;
+                color:{'#111' if cur_page=='profile' else '#374151'};
+                background:{'#f9fafb' if cur_page=='profile' else '#fff'};">
+        <span style="font-size:16px;">👤</span> My Profile
+        {'<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:#111;"></span>' if cur_page=='profile' else ''}
+      </a>
+      <div style="height:1px;background:#f3f4f6;margin:0 12px;"></div>
+      <a href="?nav=trip"
+         style="display:flex;align-items:center;gap:10px;padding:13px 16px;
+                text-decoration:none;font-size:14px;font-weight:500;
+                color:{'#111' if cur_page=='trip' else '#374151'};
+                background:{'#f9fafb' if cur_page=='trip' else '#fff'};">
+        <span style="font-size:16px;">✈️</span> Plan a Trip
+        {'<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:#111;"></span>' if cur_page=='trip' else ''}
+      </a>
+      <div style="height:1px;background:#f3f4f6;margin:0 12px;"></div>
+      <a href="?nav=admin"
+         style="display:flex;align-items:center;gap:10px;padding:13px 16px;
+                text-decoration:none;font-size:14px;font-weight:500;
+                color:{'#111' if cur_page=='admin' else '#374151'};
+                background:{'#f9fafb' if cur_page=='admin' else '#fff'};">
+        <span style="font-size:16px;">⚙️</span> Admin
+        {'<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:#111;"></span>' if cur_page=='admin' else ''}
+      </a>
+    </div>
+  </div>
+
+  <!-- App title + current page -->
+  <div style="flex:1;padding:0 12px;">
+    <p style="font-size:11px;color:#9ca3af;margin:0;text-transform:uppercase;
+              letter-spacing:.06em;">AI Loyalty Optimizer</p>
+    <p style="font-size:17px;font-weight:600;color:#111;margin:0;">{_cur_label}</p>
+  </div>
+
+</div>
+
+<script>
+function toggleMenu() {{
+  var m = document.getElementById('hmenu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}}
+// Close when clicking outside
+document.addEventListener('click', function(e) {{
+  var btn = document.getElementById('hbtn');
+  var menu = document.getElementById('hmenu');
+  if (btn && menu && !btn.contains(e.target) && !menu.contains(e.target)) {{
+    menu.style.display = 'none';
+  }}
+}});
+</script>
+
+<hr style="margin:0 0 1rem;border:none;border-top:1px solid #e8e8e8;">
+""", unsafe_allow_html=True)
 
 if cur_page == "profile":
     page_profile()
