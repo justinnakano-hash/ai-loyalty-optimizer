@@ -494,15 +494,47 @@ def get_cat(name):
     return None
 
 # ─────────────────────────────────────────────
+#  PERSISTENT ADMIN SETTINGS
+# ─────────────────────────────────────────────
+# st.cache_resource is shared across ALL sessions in the same process.
+# Backed by admin_settings.json so it survives redeploys/restarts.
+
+from pathlib import Path as _Path
+_ADMIN_SETTINGS_PATH = _Path(__file__).parent / "admin_settings.json"
+
+@st.cache_resource
+def _admin_settings_store():
+    """One shared dict across all sessions. Loaded from disk on first call."""
+    if _ADMIN_SETTINGS_PATH.exists():
+        try:
+            return json.loads(_ADMIN_SETTINGS_PATH.read_text())
+        except Exception:
+            pass
+    return {"mock_override": False}
+
+def get_admin_setting(key, default=None):
+    return _admin_settings_store().get(key, default)
+
+def set_admin_setting(key, value):
+    store = _admin_settings_store()
+    store[key] = value
+    try:
+        _ADMIN_SETTINGS_PATH.write_text(json.dumps(store, indent=2))
+    except Exception:
+        pass  # disk write failure is non-fatal; in-memory store still works
+
+# ─────────────────────────────────────────────
 #  SESSION STATE
 # ─────────────────────────────────────────────
-if "profile"     not in st.session_state: st.session_state.profile     = {}
-if "page"        not in st.session_state: st.session_state.page        = "profile"
-if "editing"     not in st.session_state: st.session_state.editing     = None
+if "profile"      not in st.session_state: st.session_state.profile      = {}
+if "page"         not in st.session_state: st.session_state.page         = "profile"
+if "editing"      not in st.session_state: st.session_state.editing      = None
 if "admin_authed" not in st.session_state: st.session_state.admin_authed = False
-if "mock_override" not in st.session_state: st.session_state.mock_override = None  # None | True | False
+# mock_override reads from persistent store, not session state
+if "mock_override" not in st.session_state:
+    st.session_state.mock_override = get_admin_setting("mock_override", False)
 
-# Mobile-only widget state (segmented controls)
+# Mobile widget state
 if "m_search_scope" not in st.session_state: st.session_state.m_search_scope = "Flight + Hotel"
 if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "Round trip"
 
@@ -797,10 +829,9 @@ def _get_api_key():
 
 
 def _resolve_mock_mode(api_key):
-    override = st.session_state.get("mock_override", None)
-    if override is not None:
-        return override
-    return api_key is None
+    if not api_key:
+        return True
+    return get_admin_setting("mock_override", False)
 
 
 def _build_trip_data(profile, params):
@@ -1837,49 +1868,29 @@ def page_admin():
 
     # ── Section 1: Mock mode ──
     st.markdown("### Mock mode")
-    st.caption("Override the per-user mock mode toggle globally for all sessions.")
+    st.caption("When ON, all users see sample data instead of live API results. Persists across sessions.")
 
-    current = st.session_state.mock_override
-    label   = {None: "Follow user setting (default)", True: "Force ON for all users",
-                False: "Force OFF for all users"}.get(current, "Unknown")
-    st.info(f"Current override: **{label}**")
+    current = get_admin_setting("mock_override", False)
+    st.session_state.mock_override = current
+    status_label = "🟢 ON — showing sample data" if current else "⚪ OFF — using live API"
+    st.info(f"Mock mode is currently: **{status_label}**")
 
-    if IS_MOBILE:
-        if st.button("Follow user setting", use_container_width=True,
-                     type="primary" if current is None else "secondary",
-                     key="mock_none"):
-            st.session_state.mock_override = None
-            st.rerun()
-        if st.button("Force mock ON", use_container_width=True,
+    def _set_mock(value):
+        set_admin_setting("mock_override", value)
+        st.session_state.mock_override = value
+        st.rerun()
+
+    mc1, mc2 = st.columns(2)
+    with mc1:
+        if st.button("Mock ON", use_container_width=True,
                      type="primary" if current is True else "secondary",
                      key="mock_on"):
-            st.session_state.mock_override = True
-            st.rerun()
-        if st.button("Force mock OFF", use_container_width=True,
+            _set_mock(True)
+    with mc2:
+        if st.button("Mock OFF", use_container_width=True,
                      type="primary" if current is False else "secondary",
                      key="mock_off"):
-            st.session_state.mock_override = False
-            st.rerun()
-    else:
-        mc1, mc2, mc3 = st.columns(3)
-        with mc1:
-            if st.button("Follow user setting", use_container_width=True,
-                         type="primary" if current is None else "secondary",
-                         key="mock_none"):
-                st.session_state.mock_override = None
-                st.rerun()
-        with mc2:
-            if st.button("Force mock ON", use_container_width=True,
-                         type="primary" if current is True else "secondary",
-                         key="mock_on"):
-                st.session_state.mock_override = True
-                st.rerun()
-        with mc3:
-            if st.button("Force mock OFF", use_container_width=True,
-                         type="primary" if current is False else "secondary",
-                         key="mock_off"):
-                st.session_state.mock_override = False
-                st.rerun()
+            _set_mock(False)
 
     st.markdown("---")
 
