@@ -1690,98 +1690,73 @@ def page_trip():
         return st.session_state.get(state_key, options[0])
 
     def scope_tiles():
-        """
-        Pure HTML icon tiles — clicking triggers a hidden st.button via JS.
-        No visible buttons, no radio. Icons use proper emoji rendered as SVG text.
-        """
         current = st.session_state.get("t_scope", "Flight + Hotel")
-
-        # Each tile: (label, icon_html for inactive, icon_html for active)
-        # Using clean, well-tested SVG paths for plane and building
-
-        PLANE_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
-  <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"
-        fill="IC"/>
-</svg>"""
-
-        HOTEL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
-  <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="IC"/>
-</svg>"""
-
-        PLANE_SM = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22">
-  <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"
-        fill="IC"/>
-</svg>"""
-
-        HOTEL_SM = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22">
-  <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="IC"/>
-</svg>"""
 
         TILES = [
             ("Flight + Hotel",
-             f'<div style="display:flex;gap:6px;align-items:center;justify-content:center;">' +
-             PLANE_SM + HOTEL_SM +
-             '</div>'),
-            ("Flight",  PLANE_SVG),
-            ("Hotel",   HOTEL_SVG),
+             '<div class="st-icons-dual"><i class="ti ti-plane-tilt"></i>'
+             '<i class="ti ti-building"></i></div>'),
+            ("Flight",
+             '<div class="st-icons"><i class="ti ti-plane-tilt"></i></div>'),
+            ("Hotel",
+             '<div class="st-icons"><i class="ti ti-building"></i></div>'),
         ]
 
-        tiles_html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:2px;">' 
-        for label, icon_tpl in TILES:
-            active  = label == current
-            bg      = "#111111" if active else "#ffffff"
-            border  = "#111111" if active else "#e0e0e0"
-            ic      = "#ffffff" if active else "#555555"
-            lc      = "#ffffff" if active else "#222222"
-            fw      = "700"     if active else "500"
-            icon    = icon_tpl.replace("IC", ic)
-            tiles_html += f"""<div class="scope-tile-html" data-label="{label}"
-  style="background:{bg};border:2px solid {border};border-radius:14px;
-         display:flex;flex-direction:column;align-items:center;justify-content:center;
-         gap:10px;padding:20px 6px 16px;cursor:pointer;
-         -webkit-tap-highlight-color:transparent;transition:background .12s,border-color .12s;
-         user-select:none;">
-  {icon}
-  <span style="font-size:11px;font-weight:{fw};color:{lc};text-align:center;line-height:1.2;
-               font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">{label}</span>
-</div>"""
-        tiles_html += '</div>'
-        st.markdown(tiles_html, unsafe_allow_html=True)
+        # Build tile HTML — onclick updates visual immediately then triggers hidden button
+        tiles = ""
+        for label, icon_html in TILES:
+            active_cls = " active" if label == current else ""
+            tiles += (
+                f'<div class="st-tile{active_cls}" data-label="{label}" '
+                f'onclick="(function(t){{'
+                f'document.querySelectorAll(\'.st-tile\').forEach(function(x){{x.classList.remove(\'active\');}});'
+                f't.classList.add(\'active\');'
+                f'var lbl=t.getAttribute(\'data-label\');'
+                f'var wrap=document.querySelector(\'[data-scope-btns]\');'
+                f'if(!wrap)return;'
+                f'wrap.querySelectorAll(\'button\').forEach(function(b){{if(b.innerText.trim()===lbl)b.click();}});'
+                f'}})(this)">'
+                f'{icon_html}'
+                f'<div class="st-label">{label}</div>'
+                f'</div>'
+            )
 
-        # Wire tiles to hidden st.buttons via JS (buttons are invisible via CSS)
-        st.markdown("""
-<script>
-(function(){
-  function wire(){
-    var tiles = document.querySelectorAll('.scope-tile-html');
-    if(!tiles.length){ setTimeout(wire,80); return; }
-    tiles.forEach(function(tile){
-      tile.onclick = function(){
-        var lbl = tile.getAttribute('data-label');
-        var wrap = document.querySelector('[data-scope-btns]');
-        if(!wrap) return;
-        wrap.querySelectorAll('button').forEach(function(b){
-          if(b.innerText.trim()===lbl) b.click();
-        });
-      };
-    });
-  }
-  wire();
-})();
-</script>""", unsafe_allow_html=True)
+        html = (
+            '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">'
+            '<style>'
+            '.st-tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:4px;}'
+            '.st-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;'
+            'gap:10px;padding:20px 6px 16px;border-radius:14px;border:2px solid #e0e0e0;'
+            'background:#fff;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;'
+            'transition:background .12s,border-color .12s;}'
+            '.st-tile.active{background:#111;border-color:#111;}'
+            '.st-tile.active i{color:#fff !important;}'
+            '.st-tile.active .st-label{color:#fff !important;font-weight:700;}'
+            '.st-icons i,.st-icons-dual i{font-size:30px;color:#555;line-height:1;}'
+            '.st-icons-dual{display:flex;gap:5px;align-items:center;}'
+            '.st-icons-dual i{font-size:22px;}'
+            '.st-label{font-size:11.5px;font-weight:600;color:#333;text-align:center;'
+            'line-height:1.2;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;}'
+            '</style>'
+            f'<div class="st-tiles">{tiles}</div>'
+        )
+        st.markdown(html, unsafe_allow_html=True)
 
-        # Hidden buttons — CSS makes them invisible but JS can still click them
+        # Hidden st.buttons — CSS collapses them; JS clicks them on tile tap
         st.markdown('<div data-scope-btns="1">', unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3)
         with c1:
             if st.button("Flight + Hotel", key="tile_fh"):
-                st.session_state["t_scope"] = "Flight + Hotel"; st.rerun()
+                st.session_state["t_scope"] = "Flight + Hotel"
+                st.rerun()
         with c2:
             if st.button("Flight", key="tile_fl"):
-                st.session_state["t_scope"] = "Flight"; st.rerun()
+                st.session_state["t_scope"] = "Flight"
+                st.rerun()
         with c3:
             if st.button("Hotel", key="tile_ht"):
-                st.session_state["t_scope"] = "Hotel"; st.rerun()
+                st.session_state["t_scope"] = "Hotel"
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
         return st.session_state.get("t_scope", "Flight + Hotel")
