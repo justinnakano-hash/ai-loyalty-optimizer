@@ -132,6 +132,19 @@ st.markdown("""
 .cc-why  { font-size:13px; color:#555; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
+
+/* Seg button groups — always stay in a single row, never stack */
+.m-seg > div[data-testid="stHorizontalBlock"],
+.mf-seg > div[data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+}
+.m-seg > div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+.mf-seg > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+    min-width: 0 !important;
+    flex: 1 !important;
+    padding: 0 3px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -228,20 +241,37 @@ div.m-cta button {
 }
 div.m-cta button:hover { background: #2a2a2a !important; }
 
-/* Segmented button group (Flight+Hotel / Flight / Hotel  — and  Round trip / One way) */
-.m-seg button[kind] {
+/* Segmented button groups — force single row on all screen sizes */
+.m-seg, .mf-seg {
+    display: block;
+}
+/* Force Streamlit columns inside seg wrappers to stay side-by-side */
+.m-seg > div[data-testid="stHorizontalBlock"],
+.mf-seg > div[data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+}
+.m-seg > div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+.mf-seg > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+    min-width: 0 !important;
+    flex: 1 !important;
+    padding: 0 !important;
+}
+.m-seg button, .mf-seg button {
     background: #fff !important;
     color: #111 !important;
     border: 1px solid #e8e8e8 !important;
     border-radius: 10px !important;
     font-size: 12.5px !important;
     font-weight: 500 !important;
-    padding: .55rem .5rem !important;
-    min-height: 44px !important;
+    min-height: 42px !important;
     box-shadow: none !important;
     line-height: 1.2 !important;
+    white-space: nowrap !important;
+    padding: .5rem .25rem !important;
+    width: 100% !important;
 }
-.m-seg button[kind="primary"] {
+.m-seg button[kind="primary"], .mf-seg button[kind="primary"] {
     background: #111 !important;
     color: #fff !important;
     border-color: #111 !important;
@@ -379,11 +409,34 @@ div.m-cta button:hover { background: #2a2a2a !important; }
 
 /* Hide column hint labels and other desktop chrome on mobile */
 .m-hide-on-mobile { display: none !important; }
+
+/* Trip form sections */
+.mf-section { background:#f5f3ec; border-radius:14px; margin-bottom:.65rem; overflow:hidden; }
+.mf-header { display:flex; justify-content:space-between; align-items:center;
+    padding:.85rem 1rem; font-size:14px; }
+.mf-header-label { font-weight:600; color:#111; }
+.mf-header-value { color:#666; font-size:13px; font-weight:400; text-align:right;
+    max-width:55%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mf-body { padding:0 .85rem .85rem; }
+.mf-route-row { display:flex; align-items:flex-start; gap:10px;
+    padding:.55rem 0; border-top:1px solid #eceae3; }
+.mf-route-lbl { font-size:13px; color:#888; width:38px; flex-shrink:0; padding-top:9px; }
+.mf-route-val { flex:1; min-width:0; }
+.mf-body div[data-testid="stSelectbox"] label,
+.mf-body div[data-testid="stDateInput"] label,
+.mf-body div[data-testid="stNumberInput"] label { display:none !important; }
+.mf-body div[data-testid="stSelectbox"] > div > div {
+    background:#fff !important; border-color:#e0e0e0 !important;
+    border-radius:10px !important; font-size:14px !important; }
+.mf-body div[data-testid="stDateInput"] > div > div {
+    background:#fff !important; border-color:#e0e0e0 !important;
+    border-radius:10px !important; }
+.mf-body div[data-testid="stSlider"] { padding:0 .1rem !important; }
+.mf-body div[data-testid="stSlider"] label { display:none !important; }
 </style>
 """
 
-if IS_MOBILE:
-    st.markdown(MOBILE_CSS, unsafe_allow_html=True)
+st.markdown(MOBILE_CSS, unsafe_allow_html=True)  # always inject — unused classes are harmless on desktop
 
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
