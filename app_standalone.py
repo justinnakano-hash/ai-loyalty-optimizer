@@ -126,6 +126,23 @@ st.markdown("""
 .cc-why  { font-size:13px; color:#555; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
+
+/* Always hide the streamlit-js-eval probe widget — it renders a visible white box */
+iframe[title="streamlit_js_eval.streamlit_js_eval"],
+[data-testid="stIFrame"]:has(iframe[title*="streamlit_js_eval"]),
+.element-container:has(iframe[title*="streamlit_js_eval"]) {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+/* Belt-and-suspenders: any stIFrame inside the probe element */
+div[data-testid="stVerticalBlock"] > div[data-testid="stIFrame"]:first-child {
+    display: none !important;
+    height: 0 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -135,8 +152,11 @@ st.markdown("""
 # ─────────────────────────────────────────────
 MOBILE_CSS = """
 <style>
-/* Page background — soft cream like the mockup */
-.stApp { background: #f5efe2 !important; }
+/* Page background — soft cream, scoped to real mobile widths via media query
+   so it NEVER bleeds onto desktop even if IS_MOBILE is briefly wrong */
+@media (max-width: 768px) {
+    .stApp { background: #f5efe2 !important; }
+}
 section.main > div.block-container,
 [data-testid="stAppViewContainer"] > .main .block-container {
     background: transparent !important;
