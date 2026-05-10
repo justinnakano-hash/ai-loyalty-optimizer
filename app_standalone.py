@@ -1254,83 +1254,100 @@ cur_page = st.session_state.get("page", "profile")
 _page_labels = {"profile": "My Profile", "trip": "Plan a Trip", "admin": "Admin"}
 _cur_label   = _page_labels.get(cur_page, "My Profile")
 
-# ── Hamburger nav — pure HTML, no Streamlit columns ──
-st.markdown(f"""
-<div style="display:flex;align-items:center;justify-content:space-between;
-            padding:.5rem 0 .75rem;position:relative;">
+# ── Hamburger nav — JS navigation to avoid Streamlit link interception ──
+import streamlit.components.v1 as _nav_components
 
-  <!-- Hamburger button + dropdown -->
-  <div style="position:relative;">
-    <button id="hbtn" onclick="toggleMenu()"
-      style="background:none;border:1px solid #e5e7eb;border-radius:8px;
-             padding:7px 10px;cursor:pointer;display:flex;flex-direction:column;
-             gap:4px;align-items:center;justify-content:center;width:40px;height:40px;">
-      <span style="display:block;width:18px;height:2px;background:#374151;border-radius:1px;"></span>
-      <span style="display:block;width:18px;height:2px;background:#374151;border-radius:1px;"></span>
-      <span style="display:block;width:18px;height:2px;background:#374151;border-radius:1px;"></span>
-    </button>
-
-    <!-- Dropdown menu -->
-    <div id="hmenu"
-      style="display:none;position:absolute;top:48px;left:0;z-index:9999;
-             background:#fff;border:1px solid #e5e7eb;border-radius:12px;
-             min-width:180px;overflow:hidden;
-             box-shadow:0 4px 20px rgba(0,0,0,.10);">
-      <a href="?nav=profile"
-         style="display:flex;align-items:center;gap:10px;padding:13px 16px;
-                text-decoration:none;font-size:14px;font-weight:500;
-                color:{'#111' if cur_page=='profile' else '#374151'};
-                background:{'#f9fafb' if cur_page=='profile' else '#fff'};">
-        <span style="font-size:16px;">👤</span> My Profile
-        {'<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:#111;"></span>' if cur_page=='profile' else ''}
-      </a>
-      <div style="height:1px;background:#f3f4f6;margin:0 12px;"></div>
-      <a href="?nav=trip"
-         style="display:flex;align-items:center;gap:10px;padding:13px 16px;
-                text-decoration:none;font-size:14px;font-weight:500;
-                color:{'#111' if cur_page=='trip' else '#374151'};
-                background:{'#f9fafb' if cur_page=='trip' else '#fff'};">
-        <span style="font-size:16px;">✈️</span> Plan a Trip
-        {'<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:#111;"></span>' if cur_page=='trip' else ''}
-      </a>
-      <div style="height:1px;background:#f3f4f6;margin:0 12px;"></div>
-      <a href="?nav=admin"
-         style="display:flex;align-items:center;gap:10px;padding:13px 16px;
-                text-decoration:none;font-size:14px;font-weight:500;
-                color:{'#111' if cur_page=='admin' else '#374151'};
-                background:{'#f9fafb' if cur_page=='admin' else '#fff'};">
-        <span style="font-size:16px;">⚙️</span> Admin
-        {'<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:#111;"></span>' if cur_page=='admin' else ''}
-      </a>
-    </div>
+_nav_html = f"""<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}}
+body{{background:transparent;}}
+.bar{{display:flex;align-items:center;padding:8px 2px 10px;gap:12px;}}
+.hbtn{{background:none;border:1px solid #e5e7eb;border-radius:8px;padding:0;
+       cursor:pointer;width:40px;height:40px;display:flex;flex-direction:column;
+       align-items:center;justify-content:center;gap:4px;flex-shrink:0;}}
+.hbtn:hover{{background:#f9fafb;}}
+.hline{{display:block;width:16px;height:2px;background:#374151;border-radius:1px;}}
+.title-block{{flex:1;}}
+.sub{{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;}}
+.pg{{font-size:17px;font-weight:600;color:#111827;}}
+.menu{{display:none;position:absolute;top:60px;left:2px;z-index:9999;
+       background:#fff;border:1px solid #e5e7eb;border-radius:14px;
+       min-width:200px;overflow:hidden;
+       box-shadow:0 8px 24px rgba(0,0,0,.12);}}
+.item{{display:flex;align-items:center;gap:12px;padding:14px 18px;
+       cursor:pointer;font-size:14px;font-weight:500;color:#374151;
+       border-bottom:1px solid #f3f4f6;}}
+.item:last-child{{border-bottom:none;}}
+.item:hover{{background:#f9fafb;}}
+.item.active{{color:#111827;background:#f3f4f6;}}
+.dot{{margin-left:auto;width:7px;height:7px;border-radius:50%;background:#111827;}}
+.wrap{{position:relative;}}
+</style>
+</head><body>
+<div class="wrap">
+<div class="bar">
+  <button class="hbtn" id="hbtn" onclick="toggle()" aria-label="Menu">
+    <span class="hline"></span>
+    <span class="hline"></span>
+    <span class="hline"></span>
+  </button>
+  <div class="title-block">
+    <div class="sub">AI Loyalty Optimizer</div>
+    <div class="pg" id="pg-title">{_cur_label}</div>
   </div>
-
-  <!-- App title + current page -->
-  <div style="flex:1;padding:0 12px;">
-    <p style="font-size:11px;color:#9ca3af;margin:0;text-transform:uppercase;
-              letter-spacing:.06em;">AI Loyalty Optimizer</p>
-    <p style="font-size:17px;font-weight:600;color:#111;margin:0;">{_cur_label}</p>
-  </div>
-
 </div>
-
+<div class="menu" id="hmenu">
+  <div class="item {'active' if cur_page=='profile' else ''}" onclick="nav('profile')">
+    <span style="font-size:18px;">👤</span> My Profile
+    {'<span class="dot"></span>' if cur_page=='profile' else ''}
+  </div>
+  <div class="item {'active' if cur_page=='trip' else ''}" onclick="nav('trip')">
+    <span style="font-size:18px;">✈️</span> Plan a Trip
+    {'<span class="dot"></span>' if cur_page=='trip' else ''}
+  </div>
+  <div class="item {'active' if cur_page=='admin' else ''}" onclick="nav('admin')">
+    <span style="font-size:18px;">⚙️</span> Admin
+    {'<span class="dot"></span>' if cur_page=='admin' else ''}
+  </div>
+</div>
+</div>
 <script>
-function toggleMenu() {{
-  var m = document.getElementById('hmenu');
-  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+function toggle(){{
+  var m=document.getElementById('hmenu');
+  m.style.display=m.style.display==='block'?'none':'block';
 }}
-// Close when clicking outside
-document.addEventListener('click', function(e) {{
-  var btn = document.getElementById('hbtn');
-  var menu = document.getElementById('hmenu');
-  if (btn && menu && !btn.contains(e.target) && !menu.contains(e.target)) {{
-    menu.style.display = 'none';
+function nav(page){{
+  document.getElementById('hmenu').style.display='none';
+  // Use window.top to navigate the parent Streamlit app
+  try{{
+    var url=window.top.location.pathname+'?nav='+page;
+    window.top.location.href=url;
+  }}catch(e){{
+    // Cross-origin fallback: post message
+    window.parent.postMessage({{streamlit_nav:page}},'*');
+  }}
+}}
+document.addEventListener('click',function(e){{
+  var m=document.getElementById('hmenu');
+  var b=document.getElementById('hbtn');
+  if(m&&b&&!b.contains(e.target)&&!m.contains(e.target)){{
+    m.style.display='none';
   }}
 }});
+// Adjust iframe height
+document.addEventListener('DOMContentLoaded',function(){{
+  window.frameElement && (window.frameElement.style.height='70px');
+}});
 </script>
+</body></html>"""
 
-<hr style="margin:0 0 1rem;border:none;border-top:1px solid #e8e8e8;">
-""", unsafe_allow_html=True)
+_nav_components.html(_nav_html, height=70, scrolling=False)
+
+st.markdown(
+    "<hr style='margin:0 0 1rem;border:none;border-top:1px solid #e8e8e8;'>",
+    unsafe_allow_html=True)
+
 
 if cur_page == "profile":
     page_profile()
