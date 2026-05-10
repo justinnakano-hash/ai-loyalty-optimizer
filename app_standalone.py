@@ -784,7 +784,7 @@ def _seg_buttons(options, state_key, key_prefix, n_cols=None):
                 st.session_state[state_key] = opt
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-    return st.session_state[state_key]
+    return st.session_state.get(state_key, options[0])
 
 # ─────────────────────────────────────────────
 #  TRIP — SHARED HELPERS (used by both mobile + desktop)
@@ -1587,7 +1587,7 @@ def page_trip():
                     st.session_state[state_key] = opt
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-        return st.session_state[state_key]
+        return st.session_state.get(state_key, options[0])
 
     def mf_open(label, value=""):
         val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
