@@ -10,9 +10,6 @@ from metadata_refresh import load_metadata, is_stale, refresh_metadata, save_met
 def get_metadata():
     return load_metadata()
 
-# META is loaded at render time via get_metadata() — not at module level
-# This ensures st.cache_data.clear() + st.rerun() picks up fresh data.
-
 st.set_page_config(
     page_title="AI Loyalty Optimizer",
     page_icon="✈️",
@@ -20,45 +17,28 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-#  VIEWPORT DETECTION (mobile vs desktop)
+#  RESPONSIVE LAYOUT — pure JS + CSS approach
 # ─────────────────────────────────────────────
-# Strategy: default to DESKTOP always. Mobile layout is delivered via CSS
-# @media queries. We use streamlit-js-eval ONLY to store the viewport width
-# in session state for use in layout decisions — but we never block rendering
-# or serve a different Python branch based on it.
+# Inject a <script> that runs immediately in the browser and adds
+# class="is-mobile" to <body> when window.innerWidth <= 768.
+# CSS then uses body.is-mobile to show/hide .desktop-only / .mobile-only.
+# This needs zero Python round-trips and works reliably on Streamlit Cloud.
 #
-# This means:
-#  - Desktop always renders the original desktop layout (sidebar form, etc.)
-#  - On mobile (≤768px), CSS hides the sidebar and shows the mobile card layout
-#  - The mobile card layout is ALWAYS rendered in the HTML but hidden on desktop
-#  - No loading flash, no wrong-branch bugs, no streamlit_js_eval dependency issues
-
-def _detect_viewport():
-    """Returns (width, is_reliable). Never blocks rendering."""
-    if "viewport_width" in st.session_state and st.session_state.viewport_width is not None:
-        return int(st.session_state.viewport_width), True
-    try:
-        from streamlit_js_eval import streamlit_js_eval
-        w = streamlit_js_eval(js_expressions="window.innerWidth", key="vp_w_probe")
-        if w is not None:
-            st.session_state.viewport_width = int(w)
-            return int(w), True
-    except Exception:
-        pass
-    # Not yet known — default to desktop so the app always renders
-    return 1200, False
-
-VIEWPORT_W, _vp_detected = _detect_viewport()
-IS_MOBILE = _vp_detected and VIEWPORT_W <= 768
+# IS_MOBILE (Python-side) is always False — we never branch layouts in Python.
+# Layout switching is 100% CSS + JS.
+IS_MOBILE = False  # Python never changes this; JS/CSS handles it in the browser
 
 # ─────────────────────────────────────────────
 #  STYLES
 # ─────────────────────────────────────────────
-# Desktop CSS (unchanged from original) is always loaded.
-# Mobile CSS is appended ONLY on mobile and overrides where needed.
 
 st.markdown("""
 <style>
+/* ══ HIDE STREAMLIT CHROME ══ */
+#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
+[data-testid="stStatusWidget"], header[data-testid="stHeader"] { display:none !important; }
+
+/* ══ DESKTOP BASE (always) ══ */
 .block-container { max-width:860px !important; padding-top:1.5rem !important; }
 .plain-english { background:#e6f4ea; border-radius:10px; padding:.9rem 1.1rem;
     font-size:14px; color:#1e5c2a; line-height:1.65; margin-bottom:1rem; }
@@ -123,285 +103,114 @@ st.markdown("""
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
-/* Layout branching — desktop-only shown on wide screens, mobile-only on narrow */
+/* ══ LAYOUT BRANCHING ══
+   JS adds class="is-mobile" to <body> when window.innerWidth <= 768.
+   Desktop (.desktop-only) is shown by default; mobile (.mobile-only) is hidden.
+   When body.is-mobile: flip them. */
 .desktop-only { display: block; }
-.mobile-only  { display: none;  }
-@media (max-width: 768px) {
-    .desktop-only { display: none !important; }
-    .mobile-only  { display: block !important; }
-}
+.mobile-only  { display: none !important; }
+body.is-mobile .desktop-only { display: none !important; }
+body.is-mobile .mobile-only  { display: block !important; }
 
-/* Always hide the streamlit-js-eval probe widget — it renders a visible white box */
-iframe[title="streamlit_js_eval.streamlit_js_eval"],
-[data-testid="stIFrame"]:has(iframe[title*="streamlit_js_eval"]),
-.element-container:has(iframe[title*="streamlit_js_eval"]) {
-    display: none !important;
-    height: 0 !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-/* Belt-and-suspenders: any stIFrame inside the probe element */
-div[data-testid="stVerticalBlock"] > div[data-testid="stIFrame"]:first-child {
-    display: none !important;
-    height: 0 !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-#  MOBILE-ONLY STYLES (mockup look)
-# ─────────────────────────────────────────────
-MOBILE_CSS = """
-<style>
-/* Page background — soft cream, scoped to real mobile widths via media query
-   so it NEVER bleeds onto desktop even if IS_MOBILE is briefly wrong */
-@media (max-width: 768px) {
-    .stApp { background: #f5efe2 !important; }
-}
-section.main > div.block-container,
-[data-testid="stAppViewContainer"] > .main .block-container {
+/* ══ MOBILE GLOBAL ══ (only active when body.is-mobile) */
+body.is-mobile .stApp { background: #f5efe2 !important; }
+body.is-mobile section[data-testid="stSidebar"],
+body.is-mobile [data-testid="collapsedControl"],
+body.is-mobile button[data-testid="stSidebarCollapsedControl"] { display:none !important; }
+body.is-mobile section.main > div.block-container,
+body.is-mobile [data-testid="stAppViewContainer"] > .main .block-container {
     background: transparent !important;
     padding: .75rem .75rem 2rem !important;
     max-width: 100% !important;
 }
+body.is-mobile .mobile-hide-title h1 { display: none !important; }
 
-/* Hide the sidebar entirely on mobile — its controls are rendered inline */
-section[data-testid="stSidebar"] { display: none !important; }
-button[data-testid="stSidebarCollapsedControl"] { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
-
-/* Hide the big title — replaced by an in-card title */
-.mobile-hide-title h1 { display: none !important; }
-
-/* Card shell wrapping each "page" */
+/* ══ MOBILE CARD COMPONENTS ══ */
 .m-card {
-    background: #fff;
-    border-radius: 18px;
+    background: #fff; border-radius: 18px;
     padding: 1.1rem 1.1rem 1.25rem;
     margin-bottom: 1rem;
     box-shadow: 0 1px 2px rgba(0,0,0,.03);
 }
-.m-card-title {
-    font-size: 19px; font-weight: 600; color: #111;
-    margin: 0 0 .9rem;
-}
-
-/* Tab nav inside the card */
-.m-tabs {
-    display: flex; gap: 0;
-    border-bottom: 1px solid #e8e8e8;
-    margin-bottom: 1rem;
-}
+.m-card-title { font-size: 19px; font-weight: 600; color: #111; margin: 0 0 .9rem; }
+.m-tabs { display: flex; border-bottom: 1px solid #e8e8e8; margin-bottom: 1rem; }
 .m-tabs > div[data-testid="column"] { padding: 0 !important; }
-.m-tabs button[kind] {
-    background: transparent !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
-    border-radius: 0 !important;
-    color: #888 !important;
-    font-weight: 500 !important;
-    padding: .55rem .25rem !important;
-    box-shadow: none !important;
-    height: auto !important;
-    min-height: 0 !important;
-}
-.m-tabs button[kind="primary"] {
-    color: #111 !important;
-    border-bottom: 2px solid #111 !important;
-    font-weight: 600 !important;
-}
-.m-tabs button:focus { box-shadow: none !important; }
-
-/* Section row — gray pill containing a label + value (Optimize for, Route, Dates, etc.) */
-.m-section {
-    background: #f5f3ec;
-    border-radius: 12px;
-    padding: .85rem 1rem;
-    margin-bottom: .75rem;
-}
-.m-section-head {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 13px; color: #111; font-weight: 600;
-    margin-bottom: 0;
-}
-.m-section-head .m-section-sub {
-    font-weight: 400; color: #666; font-size: 12px;
-}
-.m-section.has-body .m-section-head { margin-bottom: .65rem; }
-.m-section-body { background: #fff; border-radius: 8px; padding: .25rem .5rem; }
-
-/* Big black CTA */
-div.m-cta button {
-    background: #111 !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 12px !important;
-    height: 52px !important;
-    font-size: 15px !important;
-    font-weight: 600 !important;
-    width: 100% !important;
-}
-div.m-cta button:hover { background: #2a2a2a !important; }
-
-/* Segmented button group (Flight+Hotel / Flight / Hotel  — and  Round trip / One way) */
-.m-seg button[kind] {
-    background: #fff !important;
-    color: #111 !important;
-    border: 1px solid #e8e8e8 !important;
-    border-radius: 10px !important;
-    font-size: 12.5px !important;
-    font-weight: 500 !important;
-    padding: .55rem .5rem !important;
-    min-height: 44px !important;
-    box-shadow: none !important;
-    line-height: 1.2 !important;
-}
-.m-seg button[kind="primary"] {
-    background: #111 !important;
-    color: #fff !important;
-    border-color: #111 !important;
-    font-weight: 600 !important;
-}
-
-/* Streamlit input cleanup inside cards */
-.m-card div[data-testid="stSelectbox"] > div > div,
-.m-card div[data-testid="stNumberInput"] > div > div,
-.m-card div[data-testid="stDateInput"] > div > div {
-    background: #fff !important;
-    border-color: #e0e0e0 !important;
-    border-radius: 8px !important;
-    min-height: 38px !important;
-}
-.m-card .stCaption, .m-card label[data-testid="stWidgetLabel"] {
-    font-size: 11px !important;
-    color: #888 !important;
-}
-.m-card hr { display: none !important; }
-
-/* Compact select labels */
-.m-card .stSelectbox label, .m-card .stNumberInput label,
-.m-card .stDateInput label, .m-card .stRadio label {
-    font-size: 11px !important; color: #888 !important;
-    margin-bottom: 2px !important;
-}
-
-/* Profile rows — tighter on mobile */
-.m-profile-cat {
-    font-size: 10px; font-weight: 700; color: #999;
-    text-transform: uppercase; letter-spacing: .06em;
-    margin: .85rem 0 .25rem;
-}
-.m-profile-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 9px 0;
-    border-bottom: 1px solid #f3f3f3;
-}
-.m-profile-row .m-dot {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-}
-.m-profile-row .m-name {
-    flex: 1; font-size: 14px; font-weight: 600; color: #111;
-}
-.m-profile-row .m-bal {
-    font-size: 13px; color: #555; white-space: nowrap;
-}
-.m-profile-row .m-pill {
-    display: inline-block; padding: 2px 10px;
-    border-radius: 20px; font-size: 11px; font-weight: 500;
-    white-space: nowrap; margin-left: 4px;
-}
-
-/* Add program row — match button height with inputs */
-.m-add-prog button {
-    border: 1px dashed #d0d0d0 !important;
-    background: #faf9f4 !important;
-    color: #555 !important;
-    border-radius: 10px !important;
-    height: 44px !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-}
-.m-summary-bar {
-    background: #f5f3ec;
-    border-radius: 10px;
-    padding: .65rem .9rem;
-    font-size: 12px; color: #666;
-    margin-top: .85rem;
-}
-
-/* Results — mockup-style "Covered" pills, tighter cards */
-.m-res-card {
-    border: 1px solid #e8e8e8; border-radius: 14px;
-    padding: 1rem 1.1rem; margin-bottom: .85rem;
-    background: #fff;
-}
-.m-res-head {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    margin-bottom: .85rem; gap: 10px;
-}
-.m-res-title { font-size: 15px; font-weight: 600; color: #111; line-height: 1.3; }
-.m-pill-covered {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 12px; border-radius: 20px;
-    font-size: 11px; font-weight: 500;
-    background: #e6f4ea; color: #1e5c2a;
-    white-space: nowrap;
-}
-.m-pill-shortfall {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 12px; border-radius: 20px;
-    font-size: 11px; font-weight: 500;
-    background: #fff3e0; color: #7a5700;
-    white-space: nowrap;
-}
-.m-bar-row { margin-bottom: .25rem; }
-.m-bar-labels {
-    display: flex; justify-content: space-between;
-    font-size: 12px; margin-bottom: 5px;
-}
-.m-bar-labels .m-bar-name { font-weight: 500; color: #111; }
-.m-bar-labels .m-bar-need { color: #888; }
-.m-bar-track {
-    height: 8px; background: #f0f0f0;
-    border-radius: 5px; position: relative; overflow: hidden;
-}
-.m-bar-fill { height: 100%; border-radius: 5px; }
-.m-bar-foot {
-    text-align: right; font-size: 11px; margin-top: 4px;
-    font-weight: 500;
-}
-
-/* CPP comparison chips (3 across) */
-.m-cpp-row {
-    display: grid; grid-template-columns: 1fr 1fr 1fr;
-    gap: 6px; margin-top: .85rem;
-}
-.m-cpp-chip {
-    border-radius: 10px; padding: .55rem .4rem;
-    text-align: center; line-height: 1.25;
-}
-.m-cpp-chip.best   { background: #e6f4ea; color: #1e5c2a; }
-.m-cpp-chip.normal { background: #f5f3ec; color: #555; }
-.m-cpp-val { font-size: 16px; font-weight: 600; display: block; }
-.m-cpp-lbl { font-size: 11px; display: block; margin-top: 1px; }
-
-/* Plain-english callout, tighter */
-.m-plain {
-    background: #e6f4ea; border-radius: 12px;
-    padding: .85rem 1rem; font-size: 13.5px;
-    color: #1e5c2a; line-height: 1.55; margin-bottom: 1rem;
-}
-
-/* Hide column hint labels and other desktop chrome on mobile */
-.m-hide-on-mobile { display: none !important; }
+.m-tabs button { background: transparent !important; border: none !important;
+    border-bottom: 2px solid transparent !important; border-radius: 0 !important;
+    color: #888 !important; font-weight: 500 !important; padding: .55rem .25rem !important;
+    box-shadow: none !important; height: auto !important; min-height: 0 !important; }
+.m-tabs button[kind="primary"] { color: #111 !important;
+    border-bottom-color: #111 !important; font-weight: 600 !important; }
+.m-section { background: #f5f3ec; border-radius: 12px; padding: .85rem 1rem; margin-bottom: .75rem; }
+.m-section-head { display:flex; justify-content:space-between; align-items:center;
+    font-size:13px; color:#111; font-weight:600; }
+div.m-cta button { background: #111 !important; color: #fff !important;
+    border: none !important; border-radius: 12px !important; height: 52px !important;
+    font-size: 15px !important; font-weight: 600 !important; width: 100% !important; }
+.m-seg button { background: #fff !important; color: #111 !important;
+    border: 1px solid #e8e8e8 !important; border-radius: 10px !important;
+    font-size: 12.5px !important; font-weight: 500 !important;
+    padding: .55rem .5rem !important; min-height: 44px !important;
+    box-shadow: none !important; line-height: 1.2 !important; }
+.m-seg button[kind="primary"] { background: #111 !important; color: #fff !important;
+    border-color: #111 !important; font-weight: 600 !important; }
+.m-profile-cat { font-size:10px; font-weight:700; color:#999;
+    text-transform:uppercase; letter-spacing:.06em; margin:.85rem 0 .25rem; }
+.m-profile-row { display:flex; align-items:center; gap:8px;
+    padding:9px 0; border-bottom:1px solid #f3f3f3; }
+.m-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.m-name { flex:1; font-size:14px; font-weight:600; color:#111; }
+.m-bal  { font-size:13px; color:#555; white-space:nowrap; }
+.m-pill { display:inline-block; padding:2px 10px; border-radius:20px;
+    font-size:11px; font-weight:500; white-space:nowrap; margin-left:4px; }
+.m-add-prog button { border:1px dashed #d0d0d0 !important; background:#faf9f4 !important;
+    color:#555 !important; border-radius:10px !important; height:44px !important;
+    font-size:13px !important; font-weight:500 !important; }
+.m-summary-bar { background:#f5f3ec; border-radius:10px; padding:.65rem .9rem;
+    font-size:12px; color:#666; margin-top:.85rem; }
+.m-res-card { border:1px solid #e8e8e8; border-radius:14px; padding:1rem 1.1rem;
+    margin-bottom:.85rem; background:#fff; }
+.m-res-head { display:flex; justify-content:space-between; align-items:flex-start;
+    margin-bottom:.85rem; gap:10px; }
+.m-res-title { font-size:15px; font-weight:600; color:#111; line-height:1.3; }
+.m-pill-covered { display:inline-flex; align-items:center; gap:4px; padding:3px 12px;
+    border-radius:20px; font-size:11px; font-weight:500;
+    background:#e6f4ea; color:#1e5c2a; white-space:nowrap; }
+.m-pill-shortfall { display:inline-flex; align-items:center; gap:4px; padding:3px 12px;
+    border-radius:20px; font-size:11px; font-weight:500;
+    background:#fff3e0; color:#7a5700; white-space:nowrap; }
+.m-bar-row { margin-bottom:.85rem; }
+.m-bar-labels { display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px; }
+.m-bar-name { font-weight:500; color:#111; }
+.m-bar-need { color:#888; }
+.m-bar-track { height:8px; background:#f0f0f0; border-radius:5px; overflow:hidden; }
+.m-bar-fill  { height:100%; border-radius:5px; }
+.m-bar-foot  { text-align:right; font-size:11px; margin-top:4px; font-weight:500; }
+.m-cpp-row   { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:.85rem; }
+.m-cpp-chip  { border-radius:10px; padding:.55rem .4rem; text-align:center; line-height:1.25; }
+.m-cpp-chip.best   { background:#e6f4ea; color:#1e5c2a; }
+.m-cpp-chip.normal { background:#f5f3ec; color:#555; }
+.m-cpp-val { font-size:16px; font-weight:600; display:block; }
+.m-cpp-lbl  { font-size:11px; display:block; margin-top:1px; }
+.m-plain { background:#e6f4ea; border-radius:12px; padding:.85rem 1rem;
+    font-size:13.5px; color:#1e5c2a; line-height:1.55; margin-bottom:1rem; }
 </style>
-"""
 
-# Always inject mobile CSS — it uses @media queries so only activates on narrow screens
-st.markdown(MOBILE_CSS, unsafe_allow_html=True)
+<script>
+/* Run immediately — set body.is-mobile before first paint */
+(function() {
+    function applyLayout() {
+        if (window.innerWidth <= 768) {
+            document.body.classList.add('is-mobile');
+        } else {
+            document.body.classList.remove('is-mobile');
+        }
+    }
+    applyLayout();
+    window.addEventListener('resize', applyLayout);
+})();
+</script>
+""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
@@ -512,17 +321,73 @@ def get_cat(name):
     return None
 
 # ─────────────────────────────────────────────
-#  SESSION STATE
+#  SESSION STATE + PERSISTENCE
 # ─────────────────────────────────────────────
-if "profile"     not in st.session_state: st.session_state.profile     = {}
-if "page"        not in st.session_state: st.session_state.page        = "profile"
-if "editing"     not in st.session_state: st.session_state.editing     = None
-if "admin_authed" not in st.session_state: st.session_state.admin_authed = False
-if "mock_override" not in st.session_state: st.session_state.mock_override = None  # None | True | False
+# Profile is persisted to localStorage via a JS snippet.
+# On every render, JS writes the current profile JSON to localStorage.
+# On first load of a fresh session, we read it back via a query param.
 
-# Mobile-only widget state (segmented controls)
+def _load_persisted_profile():
+    """On fresh session start, restore profile from ?_profile= query param if present."""
+    if st.session_state.get("_profile_loaded"):
+        return  # already done this session
+    st.session_state["_profile_loaded"] = True
+    raw = st.query_params.get("_profile", None)
+    if raw:
+        try:
+            loaded = json.loads(raw)
+            if isinstance(loaded, dict) and loaded:
+                st.session_state.profile = loaded
+                st.query_params.clear()  # clean URL
+        except Exception:
+            pass
+
+if "profile"      not in st.session_state: st.session_state.profile      = {}
+if "page"         not in st.session_state: st.session_state.page         = "profile"
+if "editing"      not in st.session_state: st.session_state.editing      = None
+if "admin_authed" not in st.session_state: st.session_state.admin_authed = False
+if "mock_override" not in st.session_state: st.session_state.mock_override = None
 if "m_search_scope" not in st.session_state: st.session_state.m_search_scope = "Flight + Hotel"
 if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "Round trip"
+
+_load_persisted_profile()
+
+# Inject localStorage persistence JS.
+# Saves profile + page to localStorage on every render.
+# On page load, if localStorage has a profile and session is fresh, pushes it
+# as a query param so Python can read it above on the next rerun.
+_profile_json = json.dumps(st.session_state.profile, ensure_ascii=False)
+st.markdown(f"""
+<script>
+(function() {{
+    var _profile = {_profile_json};
+    var _key = 'alo_profile';
+
+    // Save current profile to localStorage
+    try {{ localStorage.setItem(_key, JSON.stringify(_profile)); }} catch(e) {{}}
+
+    // On fresh page load (no Streamlit rerun yet), check if localStorage has data
+    // and the URL has no _profile param — if so, inject it and reload once.
+    var params = new URLSearchParams(window.location.search);
+    if (!params.has('_profile')) {{
+        try {{
+            var saved = localStorage.getItem(_key);
+            if (saved) {{
+                var parsed = JSON.parse(saved);
+                if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {{
+                    // Only reload if profile is non-empty and session state is empty
+                    // (Streamlit passes _profile_json as current profile; if empty, restore)
+                    if (Object.keys(_profile).length === 0) {{
+                        params.set('_profile', saved);
+                        window.location.replace(window.location.pathname + '?' + params.toString());
+                    }}
+                }}
+            }}
+        }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
