@@ -22,38 +22,34 @@ st.set_page_config(
 # ─────────────────────────────────────────────
 #  VIEWPORT DETECTION (mobile vs desktop)
 # ─────────────────────────────────────────────
-# Uses streamlit-js-eval to read window.innerWidth on first render.
-# On first run, streamlit_js_eval returns None and triggers a rerun once
-# the JS resolves. To avoid a "flash of desktop" on mobile, we render a
-# minimal loading shell during that brief first pass.
+# Strategy: default to DESKTOP always. Mobile layout is delivered via CSS
+# @media queries. We use streamlit-js-eval ONLY to store the viewport width
+# in session state for use in layout decisions — but we never block rendering
+# or serve a different Python branch based on it.
+#
+# This means:
+#  - Desktop always renders the original desktop layout (sidebar form, etc.)
+#  - On mobile (≤768px), CSS hides the sidebar and shows the mobile card layout
+#  - The mobile card layout is ALWAYS rendered in the HTML but hidden on desktop
+#  - No loading flash, no wrong-branch bugs, no streamlit_js_eval dependency issues
+
 def _detect_viewport():
+    """Returns (width, is_reliable). Never blocks rendering."""
     if "viewport_width" in st.session_state and st.session_state.viewport_width is not None:
-        return st.session_state.viewport_width, True
+        return int(st.session_state.viewport_width), True
     try:
         from streamlit_js_eval import streamlit_js_eval
         w = streamlit_js_eval(js_expressions="window.innerWidth", key="vp_w_probe")
         if w is not None:
             st.session_state.viewport_width = int(w)
-            return st.session_state.viewport_width, True
+            return int(w), True
     except Exception:
-        # streamlit-js-eval not installed or failed — fall back permanently
-        st.session_state.viewport_width = 1200
-        return 1200, True
-    # Detection in flight — render a loading shell and stop
-    return None, False
+        pass
+    # Not yet known — default to desktop so the app always renders
+    return 1200, False
 
-
-VIEWPORT_W, _vp_ready = _detect_viewport()
-if not _vp_ready:
-    # Brief loading state — avoids flashing desktop layout on mobile devices.
-    # streamlit-js-eval will fire a rerun the moment innerWidth is available.
-    st.markdown(
-        "<div style='display:flex;align-items:center;justify-content:center;"
-        "min-height:60vh;color:#999;font-size:14px;'>Loading…</div>",
-        unsafe_allow_html=True)
-    st.stop()
-
-IS_MOBILE = VIEWPORT_W <= 768
+VIEWPORT_W, _vp_detected = _detect_viewport()
+IS_MOBILE = _vp_detected and VIEWPORT_W <= 768
 
 # ─────────────────────────────────────────────
 #  STYLES
@@ -126,6 +122,31 @@ st.markdown("""
 .cc-why  { font-size:13px; color:#555; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
+
+/* Layout branching — desktop-only shown on wide screens, mobile-only on narrow */
+.desktop-only { display: block; }
+.mobile-only  { display: none;  }
+@media (max-width: 768px) {
+    .desktop-only { display: none !important; }
+    .mobile-only  { display: block !important; }
+}
+
+/* Always hide the streamlit-js-eval probe widget — it renders a visible white box */
+iframe[title="streamlit_js_eval.streamlit_js_eval"],
+[data-testid="stIFrame"]:has(iframe[title*="streamlit_js_eval"]),
+.element-container:has(iframe[title*="streamlit_js_eval"]) {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+/* Belt-and-suspenders: any stIFrame inside the probe element */
+div[data-testid="stVerticalBlock"] > div[data-testid="stIFrame"]:first-child {
+    display: none !important;
+    height: 0 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -135,8 +156,11 @@ st.markdown("""
 # ─────────────────────────────────────────────
 MOBILE_CSS = """
 <style>
-/* Page background — soft cream like the mockup */
-.stApp { background: #f5efe2 !important; }
+/* Page background — soft cream, scoped to real mobile widths via media query
+   so it NEVER bleeds onto desktop even if IS_MOBILE is briefly wrong */
+@media (max-width: 768px) {
+    .stApp { background: #f5efe2 !important; }
+}
 section.main > div.block-container,
 [data-testid="stAppViewContainer"] > .main .block-container {
     background: transparent !important;
@@ -376,8 +400,8 @@ div.m-cta button:hover { background: #2a2a2a !important; }
 </style>
 """
 
-if IS_MOBILE:
-    st.markdown(MOBILE_CSS, unsafe_allow_html=True)
+# Always inject mobile CSS — it uses @media queries so only activates on narrow screens
+st.markdown(MOBILE_CSS, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
@@ -816,21 +840,21 @@ def page_profile_mobile():
                         unsafe_allow_html=True)
                     new_bal = st.number_input(
                         "Balance", min_value=0, step=1000, value=bal,
-                        key=f"ebal_{prog_name}")
+                        key=f"m_ebal_{prog_name}")
                     idx = pdata["statuses"].index(status) if status in pdata["statuses"] else 0
                     new_status = st.selectbox(
                         "Status", pdata["statuses"], index=idx,
-                        key=f"estat_{prog_name}")
+                        key=f"m_estat_{prog_name}")
                     bc1, bc2 = st.columns(2)
                     with bc1:
-                        if st.button("Save", key=f"save_{prog_name}",
+                        if st.button("Save", key=f"m_save_{prog_name}",
                                      use_container_width=True, type="primary"):
                             st.session_state.profile[prog_name] = {
                                 "balance": new_bal, "status": new_status}
                             st.session_state.editing = None
                             st.rerun()
                     with bc2:
-                        if st.button("Cancel", key=f"cancel_{prog_name}",
+                        if st.button("Cancel", key=f"m_cancel_{prog_name}",
                                      use_container_width=True):
                             st.session_state.editing = None
                             st.rerun()
@@ -857,12 +881,12 @@ def page_profile_mobile():
                     # Edit/Remove icons under the row, small
                     ec1, ec2, _ = st.columns([1, 1, 4])
                     with ec1:
-                        if st.button("Edit", key=f"edit_{prog_name}",
+                        if st.button("Edit", key=f"m_edit_{prog_name}",
                                      use_container_width=True):
                             st.session_state.editing = prog_name
                             st.rerun()
                     with ec2:
-                        if st.button("Remove", key=f"del_{prog_name}",
+                        if st.button("Remove", key=f"m_del_{prog_name}",
                                      use_container_width=True):
                             del st.session_state.profile[prog_name]
                             if st.session_state.editing == prog_name:
@@ -873,25 +897,25 @@ def page_profile_mobile():
     st.markdown('<div style="height:.6rem;"></div>', unsafe_allow_html=True)
     st.markdown('<div class="m-add-prog">', unsafe_allow_html=True)
 
-    add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="add_cat")
+    add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="m_add_cat")
     already_added = set(profile.keys())
     available = [p for p in PROGRAMS[add_cat] if p not in already_added]
     if available:
-        add_prog = st.selectbox("Program", available, key="add_prog")
+        add_prog = st.selectbox("Program", available, key="m_add_prog")
     else:
-        st.selectbox("Program", ["— all added —"], disabled=True, key="add_prog_dis")
+        st.selectbox("Program", ["— all added —"], disabled=True, key="m_add_prog_dis")
         add_prog = None
     add_bal = st.number_input("Balance (pts)", min_value=0, step=1000,
-                              value=0, key="add_bal")
+                              value=0, key="m_add_bal")
     if add_prog:
         add_status = st.selectbox(
-            "Status", PROGRAMS[add_cat][add_prog]["statuses"], key="add_status")
+            "Status", PROGRAMS[add_cat][add_prog]["statuses"], key="m_add_status")
     else:
-        st.selectbox("Status", ["—"], disabled=True, key="add_status_dis")
+        st.selectbox("Status", ["—"], disabled=True, key="m_add_status_dis")
         add_status = None
 
     if st.button("+ Add program", use_container_width=True, type="primary",
-                 disabled=not add_prog, key="add_btn"):
+                 disabled=not add_prog, key="m_add_btn"):
         st.session_state.profile[add_prog] = {
             "balance": add_bal, "status": add_status}
         st.rerun()
@@ -914,10 +938,12 @@ def page_profile_mobile():
 
 
 def page_profile():
-    if IS_MOBILE:
-        page_profile_mobile()
-    else:
-        page_profile_desktop()
+    # Always render BOTH layouts. CSS @media hides the one that doesn't apply.
+    st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
+    page_profile_desktop()
+    st.markdown('</div><div class="mobile-only">', unsafe_allow_html=True)
+    page_profile_mobile()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  MOBILE HELPERS — tab nav inside cards
@@ -1968,14 +1994,14 @@ def page_trip_mobile():
         origin_label = st.selectbox(
             "From", AIRPORT_LABELS,
             index=AIRPORT_LABELS.index("San Francisco, CA — SFO (SFO)"),
-            key="origin_sel")
+            key="m_origin_sel")
         origin_code = AIRPORTS[origin_label]
         origin_city = origin_label.split(" —")[0]
 
         dest_label = st.selectbox(
             "To", AIRPORT_LABELS,
             index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
-            key="dest_sel")
+            key="m_dest_sel")
         dest_code = AIRPORTS[dest_label]
         dest_city = dest_label.split(" —")[0]
 
@@ -1988,7 +2014,7 @@ def page_trip_mobile():
 
         cabin = st.selectbox(
             "Cabin class", ["Economy", "Premium Economy", "Business", "First"],
-            key="cabin_sel")
+            key="m_cabin_sel")
 
         st.markdown('</div>', unsafe_allow_html=True)
     else:
@@ -2004,13 +2030,13 @@ def page_trip_mobile():
     if include_flight:
         depart_date = st.date_input(
             "Departure", value=date(2026, 6, 10),
-            min_value=date.today(), key="depart_date")
+            min_value=date.today(), key="m_depart_date")
         if is_roundtrip:
             return_date = st.date_input(
                 "Return",
                 value=depart_date + timedelta(days=10),
                 min_value=depart_date + timedelta(days=1),
-                key="return_date")
+                key="m_return_date")
             flight_nights = (return_date - depart_date).days
         else:
             return_date  = None
@@ -2019,12 +2045,12 @@ def page_trip_mobile():
         # Hotel-only date range
         checkin_date = st.date_input(
             "Check-in", value=date(2026, 6, 10),
-            min_value=date.today(), key="checkin_date")
+            min_value=date.today(), key="m_checkin_date")
         checkout_date = st.date_input(
             "Check-out",
             value=checkin_date + timedelta(days=5),
             min_value=checkin_date + timedelta(days=1),
-            key="checkout_date")
+            key="m_checkout_date")
         depart_date   = checkin_date
         return_date   = None
         flight_nights = (checkout_date - checkin_date).days
@@ -2035,7 +2061,7 @@ def page_trip_mobile():
         st.markdown('<div class="m-section">', unsafe_allow_html=True)
         st.markdown('<div class="m-section-head">Hotel</div>', unsafe_allow_html=True)
         hotel_style = st.selectbox(
-            "Style", ["Budget", "Standard", "Luxury"], key="hotel_style_sel")
+            "Style", ["Budget", "Standard", "Luxury"], key="m_hotel_style_sel")
 
         if include_flight and is_roundtrip:
             hotel_nights = flight_nights
@@ -2043,7 +2069,7 @@ def page_trip_mobile():
         elif include_flight and not is_roundtrip:
             hotel_nights = st.number_input(
                 "Nights", min_value=1, max_value=60, value=5,
-                key="hotel_nights_input")
+                key="m_hotel_nights_input")
         else:
             hotel_nights = flight_nights  # the check-in/out range
 
@@ -2052,7 +2078,7 @@ def page_trip_mobile():
             dest_label = st.selectbox(
                 "Destination", AIRPORT_LABELS,
                 index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
-                key="hotel_dest_sel")
+                key="m_hotel_dest_sel")
             dest_city = dest_label.split(" —")[0]
             dest_code = AIRPORTS[dest_label]
         st.markdown('</div>', unsafe_allow_html=True)
@@ -2121,10 +2147,12 @@ def page_trip_mobile():
 
 
 def page_trip():
-    if IS_MOBILE:
-        page_trip_mobile()
-    else:
-        page_trip_desktop()
+    # Always render BOTH layouts. CSS @media hides the one that doesn't apply.
+    st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
+    page_trip_desktop()
+    st.markdown('</div><div class="mobile-only">', unsafe_allow_html=True)
+    page_trip_mobile()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  PAGE: ADMIN
@@ -2149,17 +2177,10 @@ def page_admin():
     master_key = get_secret("admin", "api_key")
     secrets_configured = bool(admin_pw and master_key)
 
-    # On mobile, wrap everything in the card shell
-    if IS_MOBILE:
-        st.markdown('<div class="m-card">', unsafe_allow_html=True)
-        st.markdown('<p class="m-card-title">Admin</p>', unsafe_allow_html=True)
-        _render_mobile_tabs()
-
     # ── Login wall ──
     if not st.session_state.admin_authed:
-        if not IS_MOBILE:
-            st.markdown("## Admin")
-            st.markdown('<div style="max-width:360px;">', unsafe_allow_html=True)
+        st.markdown("## Admin")
+        st.markdown('<div style="max-width:360px;">', unsafe_allow_html=True)
 
         if not secrets_configured:
             st.error(
@@ -2168,37 +2189,25 @@ def page_admin():
                 "api_key  = \"sk-ant-...\"\n```\n\n"
                 "Go to: Streamlit Cloud → your app → Settings → Secrets"
             )
-            if IS_MOBILE: st.markdown('</div>', unsafe_allow_html=True)
             return
 
         pw_input = st.text_input("Admin password", type="password",
                                  placeholder="Enter password", key="admin_pw_input")
-        if st.button("Log in", type="primary", key="admin_login_btn",
-                     use_container_width=IS_MOBILE):
+        if st.button("Log in", type="primary", key="admin_login_btn"):
             if pw_input == admin_pw:
                 st.session_state.admin_authed = True
                 st.rerun()
             else:
                 st.error("Incorrect password.")
-
-        if not IS_MOBILE:
-            st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         return
 
     # ── Authenticated ──
-    if not IS_MOBILE:
-        col_title, col_logout = st.columns([4, 1])
-        with col_title:
-            st.markdown("## Admin Panel")
-        with col_logout:
-            if st.button("Log out", key="admin_logout"):
-                st.session_state.admin_authed = False
-                st.session_state.page = "profile"
-                st.rerun()
-    else:
-        if st.button("Log out", key="admin_logout", use_container_width=True):
+    col_title, col_logout = st.columns([4, 1])
+    with col_title:
+        st.markdown("## Admin Panel")
+    with col_logout:
+        if st.button("Log out", key="admin_logout"):
             st.session_state.admin_authed = False
             st.session_state.page = "profile"
             st.rerun()
@@ -2215,42 +2224,25 @@ def page_admin():
                 False: "Force OFF for all users"}.get(current, "Unknown")
     st.info(f"Current override: **{label}**")
 
-    if IS_MOBILE:
+    mc1, mc2, mc3 = st.columns(3)
+    with mc1:
         if st.button("Follow user setting", use_container_width=True,
                      type="primary" if current is None else "secondary",
                      key="mock_none"):
             st.session_state.mock_override = None
             st.rerun()
+    with mc2:
         if st.button("Force mock ON", use_container_width=True,
                      type="primary" if current is True else "secondary",
                      key="mock_on"):
             st.session_state.mock_override = True
             st.rerun()
+    with mc3:
         if st.button("Force mock OFF", use_container_width=True,
                      type="primary" if current is False else "secondary",
                      key="mock_off"):
             st.session_state.mock_override = False
             st.rerun()
-    else:
-        mc1, mc2, mc3 = st.columns(3)
-        with mc1:
-            if st.button("Follow user setting", use_container_width=True,
-                         type="primary" if current is None else "secondary",
-                         key="mock_none"):
-                st.session_state.mock_override = None
-                st.rerun()
-        with mc2:
-            if st.button("Force mock ON", use_container_width=True,
-                         type="primary" if current is True else "secondary",
-                         key="mock_on"):
-                st.session_state.mock_override = True
-                st.rerun()
-        with mc3:
-            if st.button("Force mock OFF", use_container_width=True,
-                         type="primary" if current is False else "secondary",
-                         key="mock_off"):
-                st.session_state.mock_override = False
-                st.rerun()
 
     st.markdown("---")
 
@@ -2275,15 +2267,10 @@ def page_admin():
     freshness = "Stale — older than 25 hours" if stale else "Fresh"
     cost      = get_metadata().get("refresh_cost_usd", "unknown")
 
-    if IS_MOBILE:
-        st.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
-        st.metric("Status",         freshness)
-        st.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
-    else:
-        col_a, col_b, col_c = st.columns(3)
-        col_a.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
-        col_b.metric("Status",         freshness)
-        col_c.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Last refreshed", gen_at[:10] if len(gen_at) > 9 else gen_at)
+    col_b.metric("Status",         freshness)
+    col_c.metric("Last cost",      f"${cost}" if cost != "unknown" else "—")
 
     st.markdown("**What gets refreshed:**")
     st.markdown(
@@ -2361,43 +2348,39 @@ Navigate here via the Admin nav button and enter your password.
 - The admin route is not hidden by URL — it's protected by password only
 """)
 
-    if IS_MOBILE:
-        st.markdown('</div>', unsafe_allow_html=True)  # /m-card
-
 # ─────────────────────────────────────────────
 #  NAV + ROUTER
 # ─────────────────────────────────────────────
 
-if IS_MOBILE:
-    # Hide the title on mobile (the card titles take over) — wrap so CSS rule applies
-    st.markdown('<div class="mobile-hide-title">', unsafe_allow_html=True)
-    st.markdown("# AI Loyalty Optimizer")
-    st.markdown('</div>', unsafe_allow_html=True)
-else:
-    # Desktop nav — unchanged from original
-    st.markdown("# AI Loyalty Optimizer")
+# Title — always rendered. On mobile the .mobile-hide-title CSS hides it
+# because the in-card "Loyalty Optimizer" title replaces it.
+st.markdown('<div class="mobile-hide-title">', unsafe_allow_html=True)
+st.markdown("# AI Loyalty Optimizer")
+st.markdown('</div>', unsafe_allow_html=True)
 
-    nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
-    with nav_col1:
-        if st.button("My Profile", key="nav_profile", use_container_width=True,
-                     type="primary" if st.session_state.page == "profile" else "secondary"):
-            st.session_state.page = "profile"
-            st.rerun()
-    with nav_col2:
-        if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
-                     type="primary" if st.session_state.page == "trip" else "secondary"):
-            st.session_state.page = "trip"
-            st.rerun()
-    with nav_admin:
-        admin_label = "Admin"
-        if st.button(admin_label, key="nav_admin", use_container_width=True,
-                     type="primary" if st.session_state.page == "admin" else "secondary"):
-            st.session_state.page = "admin"
-            st.rerun()
-
-    st.markdown(
-        "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
-        unsafe_allow_html=True)
+# Desktop nav — always rendered. On mobile the .desktop-only CSS hides it
+# and the in-card tab nav takes over.
+st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
+nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
+with nav_col1:
+    if st.button("My Profile", key="nav_profile", use_container_width=True,
+                 type="primary" if st.session_state.page == "profile" else "secondary"):
+        st.session_state.page = "profile"
+        st.rerun()
+with nav_col2:
+    if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
+                 type="primary" if st.session_state.page == "trip" else "secondary"):
+        st.session_state.page = "trip"
+        st.rerun()
+with nav_admin:
+    if st.button("Admin", key="nav_admin", use_container_width=True,
+                 type="primary" if st.session_state.page == "admin" else "secondary"):
+        st.session_state.page = "admin"
+        st.rerun()
+st.markdown(
+    "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
+    unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Route to the active page
 if st.session_state.page == "profile":
