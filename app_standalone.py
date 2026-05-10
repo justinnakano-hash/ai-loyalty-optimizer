@@ -151,72 +151,6 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
-/* ── Scope tile: button is invisible underneath, icon div sits on top ── */
-.tile-icon {
-    background: #fff;
-    border: 2px solid #e0e0e0;
-    border-radius: 14px;
-    padding: 18px 8px 14px;
-    margin: 0;
-    text-align: center;
-    line-height: 1;
-    transition: background .12s, border-color .12s;
-    position: relative;
-    z-index: 2;
-    pointer-events: none;  /* clicks pass through to button below */
-    user-select: none;
-}
-.tile-icon.active {
-    background: #111;
-    border-color: #111;
-}
-.tile-icon i {
-    line-height: 1;
-}
-.tile-icon-label {
-    display: block;
-    font-size: 11.5px;
-    font-weight: 600;
-    margin-top: 8px;
-    line-height: 1.2;
-}
-.tile-icon:not(.active) .tile-icon-label { color: #333; }
-.tile-icon.active .tile-icon-label { color: #fff; font-weight: 700; }
-
-/* The Streamlit button below — pull it up to overlap and fill the tile area */
-.tile-icon + div[data-testid="stElementContainer"],
-.tile-icon + div.stElementContainer,
-.tile-icon + div {
-    margin-top: -90px !important;
-    height: 90px !important;
-    position: relative;
-    z-index: 1;
-}
-.tile-icon + div button {
-    width: 100% !important;
-    height: 90px !important;
-    background: transparent !important;
-    border: 2px solid transparent !important;
-    color: transparent !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    cursor: pointer !important;
-    border-radius: 14px !important;
-}
-.tile-icon + div button:hover {
-    background: transparent !important;
-    border-color: rgba(0,0,0,0.15) !important;
-}
-.tile-icon + div button:focus,
-.tile-icon + div button:active {
-    background: transparent !important;
-    box-shadow: none !important;
-}
-.tile-icon + div button p,
-.tile-icon + div button div {
-    color: transparent !important;
-}
-
 /* Seg button rows — force single row, never stack */
 .m-seg > div, .mf-seg > div {
     display: flex !important;
@@ -1747,45 +1681,94 @@ def page_trip():
 
     def scope_tiles():
         """
-        Tile = visible icon+label div ON TOP of an invisible Streamlit button.
-        Clicks pass through to the button (CSS pointer-events).
+        Three icon tiles using st-clickable-images. The images ARE the buttons —
+        no hidden Streamlit buttons, no CSS overlay tricks. Click returns the
+        clicked image index, which we map back to the scope value.
         """
-        st.markdown(
-            '<link rel="stylesheet" '
-            'href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">',
-            unsafe_allow_html=True)
+        from st_clickable_images import clickable_images
 
         current = st.session_state.get("t_scope", "Flight + Hotel")
+        OPTIONS = ["Flight + Hotel", "Flight", "Hotel"]
 
-        TILES = [
-            ("Flight + Hotel", "tile_fh",
-             '<div style="display:flex;gap:5px;align-items:center;justify-content:center;">'
-             '<i class="ti ti-plane-tilt" style="font-size:22px;"></i>'
-             '<i class="ti ti-building" style="font-size:22px;"></i>'
-             '</div>'),
-            ("Flight", "tile_fl",
-             '<i class="ti ti-plane-tilt" style="font-size:30px;"></i>'),
-            ("Hotel", "tile_ht",
-             '<i class="ti ti-building" style="font-size:30px;"></i>'),
-        ]
+        # Build inline SVG data-URIs for each tile state (active vs inactive)
+        # Each SVG is a 220x110 tile with the icon and label baked in
+        def make_tile_svg(label, is_active):
+            bg     = "#111111" if is_active else "#ffffff"
+            border = "#111111" if is_active else "#e0e0e0"
+            fg     = "#ffffff" if is_active else "#333333"
+            ic_fg  = "#ffffff" if is_active else "#555555"
 
-        cols = st.columns(3)
-        for i, (label, key, icon_html) in enumerate(TILES):
-            with cols[i]:
-                is_active = label == current
-                ic_color = "#ffffff" if is_active else "#555555"
-                # The visible tile: icon + label, with explicit color
-                st.markdown(
-                    f'<div class="tile-icon{" active" if is_active else ""}" '
-                    f'style="color:{ic_color};">'
-                    f'{icon_html}'
-                    f'<span class="tile-icon-label">{label}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True)
-                # The invisible button underneath — full tile click target
-                if st.button(label, key=key, use_container_width=True):
-                    st.session_state["t_scope"] = label
-                    st.rerun()
+            # Tabler-style icon paths
+            PLANE_PATH = ('M16 10h4a2 2 0 0 1 0 4h-4l-4 7h-3l2-7h-4l-2 2H3l1-4'
+                          ' l-1-4h2l2 2h4l-2-7h3z')
+            BUILDING_PATH = ('M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01'
+                             'M9 15v.01M9 18v.01')
+
+            if label == "Flight + Hotel":
+                # Two icons side by side
+                icons = (
+                    f'<g transform="translate(75 28)"><path d="{PLANE_PATH}" '
+                    f'fill="none" stroke="{ic_fg}" stroke-width="2" '
+                    f'stroke-linecap="round" stroke-linejoin="round"/></g>'
+                    f'<g transform="translate(115 28)"><path d="{BUILDING_PATH}" '
+                    f'fill="none" stroke="{ic_fg}" stroke-width="2" '
+                    f'stroke-linecap="round" stroke-linejoin="round"/></g>'
+                )
+            elif label == "Flight":
+                icons = (
+                    f'<g transform="translate(95 22) scale(1.3)">'
+                    f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
+                    f'stroke-width="2" stroke-linecap="round" '
+                    f'stroke-linejoin="round"/></g>'
+                )
+            else:  # Hotel
+                icons = (
+                    f'<g transform="translate(95 22) scale(1.3)">'
+                    f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
+                    f'stroke-width="2" stroke-linecap="round" '
+                    f'stroke-linejoin="round"/></g>'
+                )
+
+            svg = (
+                f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 110" '
+                f'width="220" height="110">'
+                f'<rect x="2" y="2" width="216" height="106" rx="14" '
+                f'fill="{bg}" stroke="{border}" stroke-width="2"/>'
+                f'{icons}'
+                f'<text x="110" y="92" text-anchor="middle" '
+                f'font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" '
+                f'font-size="13" font-weight="600" fill="{fg}">{label}</text>'
+                f'</svg>'
+            )
+            import base64
+            b64 = base64.b64encode(svg.encode()).decode()
+            return f"data:image/svg+xml;base64,{b64}"
+
+        images = [make_tile_svg(label, label == current) for label in OPTIONS]
+        titles = OPTIONS
+
+        clicked = clickable_images(
+            images,
+            titles=titles,
+            div_style={
+                "display": "grid",
+                "grid-template-columns": "1fr 1fr 1fr",
+                "gap": "10px",
+                "justify-content": "center",
+            },
+            img_style={
+                "cursor": "pointer",
+                "width": "100%",
+                "height": "auto",
+                "border-radius": "14px",
+                "transition": "transform .12s",
+            },
+            key="scope_tiles_clickable",
+        )
+
+        if clicked > -1 and OPTIONS[clicked] != current:
+            st.session_state["t_scope"] = OPTIONS[clicked]
+            st.rerun()
 
         return st.session_state.get("t_scope", "Flight + Hotel")
 
