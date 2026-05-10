@@ -743,47 +743,36 @@ def page_profile_desktop():
 
     ac1, ac2, ac3, ac4, ac5 = st.columns([1.4, 1.8, 1.4, 1.8, 0.8])
     with ac1:
-        add_cat = st.selectbox("Category", list(PROGRAMS.keys()),
-                               key="add_cat", label_visibility="collapsed")
+        add_cat = st.selectbox("Category", list(PROGRAMS.keys()), key="add_cat")
     already_added = set(profile.keys())
     available = [p for p in PROGRAMS[add_cat] if p not in already_added]
     with ac2:
         if available:
-            add_prog = st.selectbox("Program", available,
-                                    key="add_prog", label_visibility="collapsed")
+            add_prog = st.selectbox("Program", available, key="add_prog")
         else:
             st.selectbox("Program", ["— all added —"], disabled=True,
-                         key="add_prog_dis", label_visibility="collapsed")
+                         key="add_prog_dis")
             add_prog = None
     with ac3:
-        add_bal = st.number_input("Balance (pts)", min_value=0, step=1000, value=0,
-                                  key="add_bal", label_visibility="collapsed")
+        add_bal = st.number_input("Balance (pts)", min_value=0, step=1000,
+                                  value=0, key="add_bal")
     with ac4:
         if add_prog:
             add_status = st.selectbox(
                 "Status", PROGRAMS[add_cat][add_prog]["statuses"],
-                key="add_status", label_visibility="collapsed")
+                key="add_status")
         else:
-            st.selectbox("Status", ["—"], disabled=True,
-                         key="add_status_dis", label_visibility="collapsed")
+            st.selectbox("Status", ["—"], disabled=True, key="add_status_dis")
             add_status = None
     with ac5:
-        st.markdown("<div style='margin-top:4px;'>", unsafe_allow_html=True)
+        # Align button to bottom of column to match input height
+        st.markdown("<div style='margin-top:1.75rem;'>", unsafe_allow_html=True)
         if st.button("+ Add", use_container_width=True, type="primary",
                      disabled=not add_prog, key="add_btn"):
             st.session_state.profile[add_prog] = {
                 "balance": add_bal, "status": add_status}
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown(
-        '<div style="display:flex;gap:0;margin-top:.3rem;">'
-        '<span style="font-size:11px;color:#bbb;flex:1.4;">Category</span>'
-        '<span style="font-size:11px;color:#bbb;flex:1.8;">Program</span>'
-        '<span style="font-size:11px;color:#bbb;flex:1.4;">Balance</span>'
-        '<span style="font-size:11px;color:#bbb;flex:1.8;">Status</span>'
-        '</div>',
-        unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  PAGE: MY PROFILE — MOBILE
