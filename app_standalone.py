@@ -1680,91 +1680,114 @@ def page_trip():
         return st.session_state.get(state_key, options[0])
 
     def scope_tiles():
-        """Pure HTML icon tiles. Clicking sets a query param → Streamlit reruns."""
-        # Read selection from query params (set by tile click) or session state
-        qp = st.query_params.get("scope", None)
-        if qp and qp in ["Flight + Hotel", "Flight", "Hotel"]:
-            st.session_state["t_scope"] = qp
+        """
+        Pure-HTML icon tiles. Each tile is a styled <div> that JS clicks
+        a corresponding hidden st.button when tapped — no navigation, no radio.
+        """
+        # Clear any stale query param from previous approach
+        if "scope" in st.query_params:
+            val = st.query_params.get("scope")
+            if val in ["Flight + Hotel", "Flight", "Hotel"]:
+                st.session_state["t_scope"] = val
             st.query_params.clear()
             st.rerun()
 
         current = st.session_state.get("t_scope", "Flight + Hotel")
 
-        # Build the URL for each tile click — appends ?scope=VALUE to current URL
-        def tile_url(val):
-            import urllib.parse
-            return "?" + urllib.parse.urlencode({"scope": val})
+        # SVGs — proper top-down plane and building icons
+        SVGS = {
+            "Flight + Hotel": """<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="40" height="40">
+  <!-- Airplane (top-down view) -->
+  <path d="M26 6 C26 6 22 14 20 22 L10 20 L10 24 L20 25 L19 34 L15 35 L15 38 L21 37 L26 46 L31 37 L37 38 L37 35 L33 34 L32 25 L42 24 L42 20 L32 22 C30 14 26 6 26 6Z"
+        fill="ICONCOLOR" opacity=".9"/>
+</svg>""",
+            "Flight": """<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="40" height="40">
+  <!-- Airplane (top-down view, larger) -->
+  <path d="M26 4 C26 4 21 14 19 23 L7 21 L7 26 L19 28 L18 38 L13 39 L13 43 L20 41 L26 48 L32 41 L39 43 L39 39 L34 38 L33 28 L45 26 L45 21 L33 23 C31 14 26 4 26 4Z"
+        fill="ICONCOLOR" opacity=".9"/>
+</svg>""",
+            "Hotel": """<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="40" height="40">
+  <rect x="6" y="22" width="40" height="26" rx="2" fill="ICONCOLOR" opacity=".15" stroke="ICONCOLOR" stroke-width="2"/>
+  <rect x="11" y="28" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
+  <rect x="22.5" y="28" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
+  <rect x="34" y="28" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
+  <rect x="11" y="37" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
+  <rect x="34" y="37" width="7" height="7" rx="1" fill="ICONCOLOR" opacity=".8"/>
+  <rect x="20" y="36" width="12" height="12" rx="1" fill="ICONCOLOR" opacity=".6"/>
+  <path d="M6 22L26 8l20 14" stroke="ICONCOLOR" stroke-width="2.5" stroke-linejoin="round" fill="none"/>
+</svg>""",
+        }
 
-        TILES = [
-            ("Flight + Hotel", tile_url("Flight + Hotel"), """
-<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="44" height="44">
-  <path d="M4 32l5-2 7.5 7.5L31 19l-2-2-13.5 10.5-5-1.5L7 30l4.5 4.5L4 37V32z"
-        stroke="ICONCOLOR" stroke-width="2" stroke-linejoin="round"/>
-  <line x1="4" y1="42" x2="28" y2="42" stroke="ICONCOLOR" stroke-width="2" stroke-linecap="round"/>
-  <rect x="30" y="22" width="16" height="18" rx="2" stroke="ICONCOLOR" stroke-width="2"/>
-  <rect x="32.5" y="27" width="4" height="4" rx=".6" fill="ICONCOLOR" opacity=".7"/>
-  <rect x="38.5" y="27" width="4" height="4" rx=".6" fill="ICONCOLOR" opacity=".7"/>
-  <rect x="32.5" y="33" width="4" height="4" rx=".6" fill="ICONCOLOR" opacity=".7"/>
-  <rect x="38.5" y="33" width="4" height="4" rx=".6" fill="ICONCOLOR" opacity=".7"/>
-  <path d="M30 22l8-6 8 6" stroke="ICONCOLOR" stroke-width="2" stroke-linejoin="round"/>
-</svg>"""),
-            ("Flight", tile_url("Flight"), """
-<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="44" height="44">
-  <path d="M4 34l5.5-2 8 8 18-21-2-2-15 12-6-1.5L9 33l5 5L4 41V34z"
-        stroke="ICONCOLOR" stroke-width="2" stroke-linejoin="round"/>
-  <line x1="4" y1="44" x2="32" y2="44" stroke="ICONCOLOR" stroke-width="2" stroke-linecap="round"/>
-</svg>"""),
-            ("Hotel", tile_url("Hotel"), """
-<svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" width="44" height="44">
-  <rect x="6" y="22" width="40" height="26" rx="2" stroke="ICONCOLOR" stroke-width="2"/>
-  <rect x="12" y="28" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
-  <rect x="23" y="28" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
-  <rect x="34" y="28" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
-  <rect x="12" y="37" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
-  <rect x="34" y="37" width="6" height="6" rx="1" fill="ICONCOLOR" opacity=".65"/>
-  <rect x="21" y="37" width="10" height="11" rx="1" fill="ICONCOLOR" opacity=".45"/>
-  <path d="M6 22L26 9l20 13" stroke="ICONCOLOR" stroke-width="2" stroke-linejoin="round"/>
-</svg>"""),
-        ]
+        LABELS = ["Flight + Hotel", "Flight", "Hotel"]
+        TILE_IDS = ["scope_tile_0", "scope_tile_1", "scope_tile_2"]
 
-        tiles_html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:4px 0 6px;">'
-        for label, url, svg_raw in TILES:
-            active = label == current
+        # ── Render pure HTML tiles ──
+        tiles_html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:4px;">'
+        for i, label in enumerate(LABELS):
+            active  = label == current
             bg      = "#111111" if active else "#ffffff"
             border  = "#111111" if active else "#e0e0e0"
-            color   = "#ffffff" if active else "#555555"
+            ic_col  = "#ffffff" if active else "#666666"
             lbl_col = "#ffffff" if active else "#333333"
-            svg = svg_raw.replace("ICONCOLOR", color)
+            svg     = SVGS[label].replace("ICONCOLOR", ic_col)
             tiles_html += f"""
-<a href="{url}" style="text-decoration:none;" target="_self">
-  <div style="
-    background:{bg};
-    border:2px solid {border};
-    border-radius:14px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:8px;
-    padding:16px 6px 14px;
-    cursor:pointer;
-    transition:all .15s;
-    -webkit-tap-highlight-color:transparent;
-  ">
-    {svg}
-    <span style="
-      font-size:11.5px;
-      font-weight:600;
-      color:{lbl_col};
-      text-align:center;
-      line-height:1.2;
-      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    ">{label}</span>
-  </div>
-</a>"""
-        tiles_html += '</div>'
+<div class="scope-tile-html" data-label="{label}"
+     style="background:{bg};border:2px solid {border};border-radius:14px;
+            display:flex;flex-direction:column;align-items:center;
+            justify-content:center;gap:8px;padding:18px 6px 14px;
+            cursor:pointer;-webkit-tap-highlight-color:transparent;
+            transition:background .12s,border-color .12s;">
+  {svg}
+  <span style="font-size:11.5px;font-weight:600;color:{lbl_col};
+               text-align:center;line-height:1.25;
+               font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    {label}
+  </span>
+</div>"""
+        tiles_html += "</div>"
         st.markdown(tiles_html, unsafe_allow_html=True)
-        return current
+
+        # ── JS: clicking a tile finds + clicks the matching hidden button ──
+        st.markdown("""
+<script>
+(function(){
+  function wireTiles(){
+    var tiles = document.querySelectorAll('.scope-tile-html');
+    if(!tiles.length){ setTimeout(wireTiles, 100); return; }
+    tiles.forEach(function(tile){
+      tile.onclick = function(){
+        var label = tile.getAttribute('data-label');
+        // Find hidden buttons by their text content
+        var btns = document.querySelectorAll('div[data-tile-hidden] button');
+        btns.forEach(function(btn){
+          if(btn.innerText.trim() === label) btn.click();
+        });
+      };
+    });
+  }
+  wireTiles();
+})();
+</script>
+""", unsafe_allow_html=True)
+
+        # ── Hidden st.buttons ──
+        st.markdown('<div data-tile-hidden="1" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;overflow:hidden;">', unsafe_allow_html=True)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("Flight + Hotel", key="tile_fh", use_container_width=True):
+                st.session_state["t_scope"] = "Flight + Hotel"
+                st.rerun()
+        with col2:
+            if st.button("Flight", key="tile_fl", use_container_width=True):
+                st.session_state["t_scope"] = "Flight"
+                st.rerun()
+        with col3:
+            if st.button("Hotel", key="tile_ht", use_container_width=True):
+                st.session_state["t_scope"] = "Hotel"
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        return st.session_state.get("t_scope", "Flight + Hotel")
 
     def mf_open(label, value=""):
         val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
