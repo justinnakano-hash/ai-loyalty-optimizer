@@ -512,7 +512,7 @@ def _admin_settings_store():
             return json.loads(_ADMIN_SETTINGS_PATH.read_text())
         except Exception:
             pass
-    return {"mock_override": None}
+    return {"mock_override": False}
 
 def get_admin_setting(key, default=None):
     return _admin_settings_store().get(key, default)
@@ -1001,10 +1001,10 @@ def _get_api_key():
 
 
 def _resolve_mock_mode(api_key):
-    override = get_admin_setting("mock_override", None)
-    if override is not None:
-        return override
-    return api_key is None
+    # If no API key is configured, always use mock regardless of setting
+    if not api_key:
+        return True
+    return get_admin_setting("mock_override", False)
 
 
 def _build_trip_data(profile, params):
@@ -2239,50 +2239,29 @@ def page_admin():
 
     # ── Section 1: Mock mode ──
     st.markdown("### Mock mode")
-    st.caption("Override applies globally to all users and persists across sessions.")
+    st.caption("When ON, all users see sample data instead of live API results. Persists across sessions.")
 
-    current = get_admin_setting("mock_override", None)
-    # Keep session state in sync for this render
+    current = get_admin_setting("mock_override", False)
     st.session_state.mock_override = current
-    label   = {None: "Follow user setting (default)", True: "Force ON for all users",
-                False: "Force OFF for all users"}.get(current, "Unknown")
-    st.info(f"Current override: **{label}**")
+    status_label = "🟢 ON — showing sample data" if current else "⚪ OFF — using live API"
+    st.info(f"Mock mode is currently: **{status_label}**")
 
     def _set_mock(value):
         set_admin_setting("mock_override", value)
         st.session_state.mock_override = value
         st.rerun()
 
-    if IS_MOBILE:
-        if st.button("Follow user setting", use_container_width=True,
-                     type="primary" if current is None else "secondary",
-                     key="mock_none"):
-            _set_mock(None)
-        if st.button("Force mock ON", use_container_width=True,
+    mc1, mc2 = st.columns(2)
+    with mc1:
+        if st.button("Mock ON", use_container_width=True,
                      type="primary" if current is True else "secondary",
                      key="mock_on"):
             _set_mock(True)
-        if st.button("Force mock OFF", use_container_width=True,
+    with mc2:
+        if st.button("Mock OFF", use_container_width=True,
                      type="primary" if current is False else "secondary",
                      key="mock_off"):
             _set_mock(False)
-    else:
-        mc1, mc2, mc3 = st.columns(3)
-        with mc1:
-            if st.button("Follow user setting", use_container_width=True,
-                         type="primary" if current is None else "secondary",
-                         key="mock_none"):
-                _set_mock(None)
-        with mc2:
-            if st.button("Force mock ON", use_container_width=True,
-                         type="primary" if current is True else "secondary",
-                         key="mock_on"):
-                _set_mock(True)
-        with mc3:
-            if st.button("Force mock OFF", use_container_width=True,
-                         type="primary" if current is False else "secondary",
-                         key="mock_off"):
-                _set_mock(False)
 
     st.markdown("---")
 
