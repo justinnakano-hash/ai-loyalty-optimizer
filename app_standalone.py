@@ -689,8 +689,8 @@ input[type=range]{{width:100%;accent-color:#111827;}}
 
   <!-- Trip type (flight only) -->
   <div class="tt-bar" id="tt-bar">
-    <button type="button" class="tt-btn{' active' if _tt=='Round trip' else ''}" onclick="setTT('Round trip')">⇄ Round trip</button>
-    <button type="button" class="tt-btn{' active' if _tt=='One way' else ''}" onclick="setTT('One way')">→ One way</button>
+    <button type="button" class="tt-btn{' active' if _tt=='Round trip' else ''}" data-tt="Round trip" onclick="setTT('Round trip')">⇄ Round trip</button>
+    <button type="button" class="tt-btn{' active' if _tt=='One way' else ''}" data-tt="One way" onclick="setTT('One way')">→ One way</button>
   </div>
 
   <!-- From -->
@@ -867,7 +867,7 @@ function setScope(s){{
 function setTT(t){{
   tt = t;
   document.querySelectorAll('.tt-btn').forEach(function(b){{
-    b.classList.toggle('active', b.textContent.trim().indexOf(t)>=0 || (t==='Round trip' && b.textContent.includes('Round')) || (t==='One way' && b.textContent.includes('One')));
+    b.classList.toggle('active', b.dataset.tt === t);
   }});
   applyScope();
 }}
@@ -904,101 +904,117 @@ document.getElementById('f').onsubmit = function(e){{
     dest:    document.getElementById('dest-sel').value,
     dep:     document.getElementById('dep-date').value,
     ret:     document.getElementById('ret-date').value,
-    ci:      document.getElementById('ci-date').value,
-    co:      document.getElementById('co-date').value,
+    ci:      document.getElementById('ci-date') ? document.getElementById('ci-date').value : '',
+    co:      document.getElementById('co-date') ? document.getElementById('co-date').value : '',
     cabin:   document.getElementById('cabin-sel').value,
     hstyle:  document.getElementById('hstyle-sel').value,
     valexp:  document.getElementById('val-slider').value,
   }};
-  // Post to parent Streamlit via query params
   var qs = Object.entries(data).map(function(kv){{
     return encodeURIComponent(kv[0])+'='+encodeURIComponent(kv[1]);
   }}).join('&');
-  window.parent.location.href = window.parent.location.pathname + '?' + qs;
+  // window.top is same-origin on Streamlit Cloud — reliable cross-iframe navigation
+  try {{
+    window.top.location.href = window.top.location.pathname + '?' + qs;
+  }} catch(err) {{
+    // Fallback for local dev where top may be cross-origin
+    window.parent.postMessage({{type:'streamlit:setQueryParam', qs: qs}}, '*');
+  }}
 }};
 </script>
 </body>
 </html>"""
 
-    components.html(card_html, height=620, scrolling=False)
+    _result = components.html(card_html, height=640, scrolling=False)
 
-    # ── Read submitted values from query params ──
+    # ── Read component return value ──
+    # components.html() doesn't return values — use session_state form pattern instead
+    # The component uses postMessage to write a hidden Streamlit form, triggered by submit
+    # We use a workaround: a hidden st.form that the component posts to via URL params
     qp = st.query_params
     run = "scope" in qp
 
-    if run:
+    def _parse_qp(qp):
         _scope_val = qp.get("scope", "Flight + Hotel")
         include_flight = _scope_val in ["Flight + Hotel", "Flight only"]
         include_hotel  = _scope_val in ["Flight + Hotel", "Hotel only"]
         is_roundtrip   = qp.get("tt", "Round trip") == "Round trip"
-
         _orig = qp.get("orig", "San Francisco, CA — SFO (SFO)")
         _dst  = qp.get("dest", "Tokyo — Narita (NRT)")
         origin_city = _orig.split(" —")[0]
         origin_code = AIRPORTS.get(_orig, "SFO")
         dest_city   = _dst.split(" —")[0]
         dest_code   = AIRPORTS.get(_dst, "NRT")
-
         _dep_s = qp.get("dep", "2026-06-10")
         _ret_s = qp.get("ret", "2026-06-20")
         try:
             depart_date = date.fromisoformat(_dep_s)
             return_date = date.fromisoformat(_ret_s) if is_roundtrip else None
         except ValueError:
-            depart_date = date(2026,6,10); return_date = None
-
+            depart_date = date(2026,6,10); return_date = date(2026,6,20)
         cabin       = qp.get("cabin",  "Business")
         hotel_style = qp.get("hstyle", "Standard")
         val_exp     = int(qp.get("valexp", 5))
-
         if include_flight and is_roundtrip and return_date:
             flight_nights = (return_date - depart_date).days
             hotel_nights  = flight_nights
-            dates_str     = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
+            dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
         elif include_flight:
             flight_nights = None; hotel_nights = None
             dates_str = f"{depart_date.strftime('%b %d, %Y')} (one way)"
         else:
-            _ci = qp.get("ci", "2026-06-10"); _co = qp.get("co", "2026-06-15")
             try:
-                checkin  = date.fromisoformat(_ci)
-                checkout = date.fromisoformat(_co)
+                checkin  = date.fromisoformat(qp.get("ci","2026-06-10"))
+                checkout = date.fromisoformat(qp.get("co","2026-06-15"))
             except ValueError:
                 checkin = date(2026,6,10); checkout = date(2026,6,15)
             hotel_nights = (checkout - checkin).days
-            depart_date  = checkin
+            depart_date  = checkin; return_date = None
             flight_nights = None
             dates_str = f"{checkin.strftime('%b %d')} – {checkout.strftime('%b %d, %Y')}"
-
         nights = hotel_nights if hotel_nights else (flight_nights or 0)
-
-        # Persist to session state so the card re-renders with last values
-        ss = st.session_state
-        ss["trip_scope"]     = _scope_val
-        ss["trip_type"]      = qp.get("tt", "Round trip")
-        ss["origin_label"]   = _orig
-        ss["dest_label"]     = _dst
-        ss["depart_str"]     = _dep_s
-        ss["return_str"]     = _ret_s
-        ss["cabin"]          = cabin
-        ss["hotel_style"]    = hotel_style
-        ss["hotel_nights_n"] = hotel_nights or 5
-        ss["val_exp"]        = val_exp
-
-        # Clear the query params so refresh doesn't re-trigger
+        # Persist
+        st.session_state.update({
+            "trip_scope": _scope_val, "trip_type": qp.get("tt","Round trip"),
+            "origin_label": _orig, "dest_label": _dst,
+            "depart_str": _dep_s, "return_str": _ret_s,
+            "cabin": cabin, "hotel_style": hotel_style,
+            "hotel_nights_n": hotel_nights or 5, "val_exp": val_exp,
+        })
         st.query_params.clear()
+        return dict(
+            include_flight=include_flight, include_hotel=include_hotel,
+            is_roundtrip=is_roundtrip, origin_city=origin_city, origin_code=origin_code,
+            dest_city=dest_city, dest_code=dest_code, depart_date=depart_date,
+            return_date=return_date, cabin=cabin, hotel_style=hotel_style,
+            val_exp=val_exp, dates_str=dates_str, nights=nights,
+            flight_nights=flight_nights, hotel_nights=hotel_nights,
+        )
 
+    if run:
+        _v = _parse_qp(qp)
     else:
-        # No submission yet — set safe defaults
-        include_flight = True; include_hotel = True
-        is_roundtrip   = True
-        origin_city = "San Francisco, CA"; origin_code = "SFO"
-        dest_city   = "Tokyo";             dest_code   = "NRT"
-        depart_date   = date(2026,6,10)
-        return_date   = date(2026,6,20)
-        flight_nights = 10; hotel_nights = 10; nights = 10
-        cabin = "Business"; hotel_style = "Standard"; val_exp = 5
-        dates_str = "Jun 10 – Jun 20, 2026"
+        # Use last persisted values or defaults
+        _v = _parse_qp({
+            "scope":  st.session_state.get("trip_scope","Flight + Hotel"),
+            "tt":     st.session_state.get("trip_type","Round trip"),
+            "orig":   st.session_state.get("origin_label","San Francisco, CA — SFO (SFO)"),
+            "dest":   st.session_state.get("dest_label","Tokyo — Narita (NRT)"),
+            "dep":    st.session_state.get("depart_str","2026-06-10"),
+            "ret":    st.session_state.get("return_str","2026-06-20"),
+            "cabin":  st.session_state.get("cabin","Business"),
+            "hstyle": st.session_state.get("hotel_style","Standard"),
+            "valexp": str(st.session_state.get("val_exp",5)),
+        })
+
+    include_flight = _v["include_flight"]; include_hotel  = _v["include_hotel"]
+    is_roundtrip   = _v["is_roundtrip"];   origin_city    = _v["origin_city"]
+    origin_code    = _v["origin_code"];    dest_city      = _v["dest_city"]
+    dest_code      = _v["dest_code"];      depart_date    = _v["depart_date"]
+    return_date    = _v["return_date"];    cabin          = _v["cabin"]
+    hotel_style    = _v["hotel_style"];    val_exp        = _v["val_exp"]
+    dates_str      = _v["dates_str"];      nights         = _v["nights"]
+    flight_nights  = _v["flight_nights"];  hotel_nights   = _v["hotel_nights"]
     st.markdown("---")
 
     if not run:
@@ -1216,41 +1232,44 @@ The session stays authenticated until you log out or close the browser.
 #  NAV + ROUTER
 # ─────────────────────────────────────────────
 
-# Title sits on its own line — clean and full width
-st.markdown("# AI Loyalty Optimizer")
+cur_page = st.session_state.get("page", "profile")
 
-# Nav — My Profile | Plan a Trip | (Admin, small, right-aligned)
-nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
-with nav_col1:
-    if st.button("My Profile", key="nav_profile", use_container_width=True,
-                 type="primary" if st.session_state.page == "profile" else "secondary"):
-        st.session_state.page = "profile"
-        st.rerun()
-with nav_col2:
-    if st.button("Plan a Trip", key="nav_trip", use_container_width=True,
-                 type="primary" if st.session_state.page == "trip" else "secondary"):
-        st.session_state.page = "trip"
-        st.rerun()
-with nav_admin:
-    # Small lock icon — doesn't advertise "admin" to casual users
-    admin_label = "Admin" if st.session_state.admin_authed else "Admin"
-    if st.button(
-        admin_label, key="nav_admin", use_container_width=True,
-        type="primary" if st.session_state.page == "admin" else "secondary"
-    ):
-        st.session_state.page = "admin"
-        st.rerun()
+# Render compact header — title left, three nav buttons right
+# On mobile the buttons stack under the title but stay readable
+_logo_col, _nav_col = st.columns([2, 3])
+with _logo_col:
+    st.markdown(
+        "<p style='font-size:1.1rem;font-weight:700;color:#111;margin:.4rem 0 0;'>"
+        "AI Loyalty Optimizer</p>",
+        unsafe_allow_html=True)
+with _nav_col:
+    nb1, nb2, nb3 = st.columns(3)
+    with nb1:
+        if st.button(
+            "👤 Profile", key="nav_profile", use_container_width=True,
+            type="primary" if cur_page == "profile" else "secondary"
+        ):
+            st.session_state.page = "profile"; st.rerun()
+    with nb2:
+        if st.button(
+            "✈ Plan", key="nav_trip", use_container_width=True,
+            type="primary" if cur_page == "trip" else "secondary"
+        ):
+            st.session_state.page = "trip"; st.rerun()
+    with nb3:
+        if st.button(
+            "⚙ Admin", key="nav_admin", use_container_width=True,
+            type="primary" if cur_page == "admin" else "secondary"
+        ):
+            st.session_state.page = "admin"; st.rerun()
 
 st.markdown(
-    "<hr style='margin:.5rem 0 1.5rem;border:none;border-top:1px solid #e8e8e8;'>",
+    "<hr style='margin:.35rem 0 1rem;border:none;border-top:1px solid #e8e8e8;'>",
     unsafe_allow_html=True)
 
-# Apply global mock override from admin if set
-_mock_override = st.session_state.get("mock_override", None)
-
-if st.session_state.page == "profile":
+if cur_page == "profile":
     page_profile()
-elif st.session_state.page == "admin":
+elif cur_page == "admin":
     page_admin()
 else:
     page_trip()
