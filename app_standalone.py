@@ -264,36 +264,7 @@ footer { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── postMessage listener — receives nav + search events from component iframes ──
-st.markdown("""
-<script>
-window.addEventListener('message', function(e) {
-  if (!e.data) return;
-  // Nav navigation
-  if (e.data.streamlit_nav) {
-    window.location.href = window.location.pathname + '?nav=' + e.data.streamlit_nav;
-  }
-  // Search form submit
-  if (e.data.streamlit_search) {
-    window.location.href = window.location.pathname + '?' + e.data.streamlit_search;
-  }
-  // Resize nav iframe when menu opens/closes
-  if (e.data.streamlit_resize) {
-    // Find the nav iframe (first iframe on page) and resize it
-    var frames = document.querySelectorAll('iframe');
-    for (var i = 0; i < frames.length; i++) {
-      var f = frames[i];
-      // Nav iframe is small — identify by current height ~58px
-      if (f.style.height && parseInt(f.style.height) < 300) {
-        f.style.height = e.data.streamlit_resize + 'px';
-        f.style.minHeight = e.data.streamlit_resize + 'px';
-        break;
-      }
-    }
-  }
-}, false);
-</script>
-""", unsafe_allow_html=True)
+
 
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
@@ -661,400 +632,151 @@ def page_trip():
         unsafe_allow_html=True)
 
     # ════════════════════════════════════════
-    #  SEARCH CARD — pure HTML component
+    #  SEARCH CARD — native Streamlit widgets
     # ════════════════════════════════════════
-    import streamlit.components.v1 as components
 
-    # Read persisted values from session state (set on previous submit)
-    ss = st.session_state
-    _scope   = ss.get("trip_scope",    "Flight + Hotel")
-    _tt      = ss.get("trip_type",     "Round trip")
-    _orig    = ss.get("origin_label",  "San Francisco, CA — SFO (SFO)")
-    _dest    = ss.get("dest_label",    "Tokyo — Narita (NRT)")
-    _dep     = ss.get("depart_str",    "2026-06-10")
-    _ret     = ss.get("return_str",    "2026-06-20")
-    _cabin   = ss.get("cabin",         "Business")
-    _hstyle  = ss.get("hotel_style",   "Standard")
-    _nights  = ss.get("hotel_nights_n", 5)
-    _valexp  = ss.get("val_exp",       5)
+    with st.form("trip_form"):
 
-    # Build JS airport list
-    airport_js = "[" + ",".join(f'"{k}"' for k in AIRPORT_LABELS) + "]"
+        # ── Scope ──
+        scope_options = ["Flight + Hotel", "Flight only", "Hotel only"]
+        search_scope = st.radio(
+            "I want to optimize my",
+            scope_options, horizontal=True,
+            index=scope_options.index(
+                st.session_state.get("trip_scope", "Flight + Hotel")),
+            key="search_scope")
+        include_flight = search_scope in ["Flight + Hotel", "Flight only"]
+        include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
 
-    card_html = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-*{{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}}
-body{{background:transparent;padding:8px 0;}}
-.card{{background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;}}
-.scope-bar{{display:flex;border-bottom:1px solid #e5e7eb;}}
-.scope-btn{{flex:1;padding:11px 0;text-align:center;font-size:13px;font-weight:500;color:#6b7280;cursor:pointer;border:none;background:none;border-right:1px solid #e5e7eb;}}
-.scope-btn:last-child{{border-right:none;}}
-.scope-btn.active{{background:#111827;color:#fff;}}
-.tt-bar{{display:flex;gap:8px;padding:10px 14px 6px;}}
-.tt-btn{{flex:1;padding:7px 0;border-radius:8px;border:1px solid #e5e7eb;font-size:12px;font-weight:500;color:#6b7280;cursor:pointer;background:#fff;text-align:center;}}
-.tt-btn.active{{background:#eff6ff;color:#2563eb;border-color:#bfdbfe;}}
-.field{{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f3f4f6;cursor:pointer;min-height:52px;position:relative;}}
-.field:last-child{{border-bottom:none;}}
-.field-icon{{font-size:17px;color:#9ca3af;width:20px;text-align:center;flex-shrink:0;}}
-.field-body{{flex:1;min-width:0;}}
-.field-label{{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;}}
-.field-value{{font-size:14px;font-weight:500;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
-.field-chev{{color:#d1d5db;font-size:12px;flex-shrink:0;}}
-.swap-row{{display:flex;align-items:center;justify-content:center;padding:6px;background:#f9fafb;border-bottom:1px solid #f3f4f6;border-top:1px solid #f3f4f6;}}
-.swap-btn{{display:flex;align-items:center;gap:6px;font-size:11px;color:#6b7280;cursor:pointer;border:none;background:none;padding:4px 10px;border-radius:20px;}}
-.swap-btn:hover{{background:#e5e7eb;}}
-.nights-badge{{font-size:11px;color:#6b7280;background:#f3f4f6;padding:2px 8px;border-radius:10px;margin-left:8px;}}
-select,input[type=date]{{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}}
-.prefs-row{{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #e5e7eb;}}
-.pref-cell{{padding:10px 14px;border-right:1px solid #f3f4f6;}}
-.pref-cell:last-child{{border-right:none;}}
-.pref-label{{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}}
-.pref-select{{width:100%;border:none;font-size:13px;font-weight:500;color:#111827;background:none;cursor:pointer;padding:0;}}
-.slider-wrap{{padding:10px 16px 14px;border-top:1px solid #f3f4f6;}}
-.slider-label{{display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:6px;}}
-input[type=range]{{width:100%;accent-color:#111827;}}
-.btn{{display:block;width:calc(100% - 24px);margin:12px;padding:15px;background:#111827;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;letter-spacing:.01em;}}
-.btn:active{{opacity:.85;transform:scale(.99);}}
-.hidden{{display:none;}}
-</style>
-</head>
-<body>
-<form id="f">
-<div class="card">
+        # ── Defaults ──
+        origin_city = origin_code = dest_city = dest_code = ""
+        cabin = "Economy"; hotel_style = "Standard"
+        depart_date = date(2026, 6, 10); return_date = None
+        flight_nights = hotel_nights = None; is_roundtrip = True
 
-  <!-- Scope -->
-  <div class="scope-bar">
-    <button type="button" class="scope-btn{' active' if _scope=='Flight + Hotel' else ''}" onclick="setScope('Flight + Hotel')">Flight + Hotel</button>
-    <button type="button" class="scope-btn{' active' if _scope=='Flight only' else ''}" onclick="setScope('Flight only')">Flight only</button>
-    <button type="button" class="scope-btn{' active' if _scope=='Hotel only' else ''}" onclick="setScope('Hotel only')">Hotel only</button>
-  </div>
+        if include_flight:
+            st.markdown("**Flight**")
+            trip_type = st.radio(
+                "Trip type", ["Round trip", "One way"], horizontal=True,
+                index=0 if st.session_state.get("trip_type","Round trip")=="Round trip" else 1,
+                key="form_trip_type")
+            is_roundtrip = trip_type == "Round trip"
 
-  <!-- Trip type (flight only) -->
-  <div class="tt-bar" id="tt-bar">
-    <button type="button" class="tt-btn{' active' if _tt=='Round trip' else ''}" data-tt="Round trip" onclick="setTT('Round trip')">⇄ Round trip</button>
-    <button type="button" class="tt-btn{' active' if _tt=='One way' else ''}" data-tt="One way" onclick="setTT('One way')">→ One way</button>
-  </div>
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                orig_default = st.session_state.get("origin_label","San Francisco, CA — SFO (SFO)")
+                orig_idx = AIRPORT_LABELS.index(orig_default) if orig_default in AIRPORT_LABELS else 0
+                origin_label = st.selectbox("From", AIRPORT_LABELS, index=orig_idx, key="form_orig")
+                origin_code = AIRPORTS[origin_label]
+                origin_city = origin_label.split(" —")[0]
+            with fc2:
+                dest_default = st.session_state.get("dest_label","Tokyo — Narita (NRT)")
+                dest_idx = AIRPORT_LABELS.index(dest_default) if dest_default in AIRPORT_LABELS else 1
+                dest_label = st.selectbox("To", AIRPORT_LABELS, index=dest_idx, key="form_dest")
+                dest_code = AIRPORTS[dest_label]
+                dest_city = dest_label.split(" —")[0]
 
-  <!-- From -->
-  <div class="field" id="flight-fields">
-    <span class="field-icon">✈</span>
-    <div class="field-body">
-      <div class="field-label">From</div>
-      <div class="field-value" id="orig-val">{_orig.split(' —')[0]}</div>
-    </div>
-    <span class="field-chev">›</span>
-    <select id="orig-sel" onchange="updateOrig(this.value)">
-      {''.join(f'<option value="{a}"{" selected" if a==_orig else ""}>{a}</option>' for a in AIRPORT_LABELS)}
-    </select>
-  </div>
+            cabin = st.selectbox("Cabin",
+                ["Economy","Premium Economy","Business","First"],
+                index=["Economy","Premium Economy","Business","First"].index(
+                    st.session_state.get("cabin","Business")),
+                key="form_cabin")
 
-  <!-- Swap -->
-  <div class="swap-row" id="swap-row">
-    <button type="button" class="swap-btn" onclick="swapAirports()">⇅ Swap</button>
-  </div>
+            if is_roundtrip:
+                dc1, dc2 = st.columns(2)
+                _dep_def = st.session_state.get("depart_date", date(2026,6,10))
+                _ret_def = st.session_state.get("return_date", date(2026,6,20))
+                if isinstance(_dep_def, str):
+                    try: _dep_def = date.fromisoformat(_dep_def)
+                    except: _dep_def = date(2026,6,10)
+                if isinstance(_ret_def, str):
+                    try: _ret_def = date.fromisoformat(_ret_def)
+                    except: _ret_def = date(2026,6,20)
+                with dc1:
+                    depart_date = st.date_input("Depart", value=_dep_def,
+                        min_value=date.today(), key="form_depart")
+                with dc2:
+                    return_date = st.date_input("Return",
+                        value=_ret_def if _ret_def > _dep_def else _dep_def + timedelta(days=7),
+                        min_value=depart_date + timedelta(days=1), key="form_return")
+                flight_nights = (return_date - depart_date).days
+                st.caption(f"{flight_nights} nights away")
+            else:
+                _dep_def = st.session_state.get("depart_date", date(2026,6,10))
+                if isinstance(_dep_def, str):
+                    try: _dep_def = date.fromisoformat(_dep_def)
+                    except: _dep_def = date(2026,6,10)
+                depart_date = st.date_input("Departure date", value=_dep_def,
+                    min_value=date.today(), key="form_depart_ow")
 
-  <!-- To -->
-  <div class="field" id="flight-fields2">
-    <span class="field-icon">⬇</span>
-    <div class="field-body">
-      <div class="field-label">To</div>
-      <div class="field-value" id="dest-val">{_dest.split(' —')[0]}</div>
-    </div>
-    <span class="field-chev">›</span>
-    <select id="dest-sel" onchange="updateDest(this.value)">
-      {''.join(f'<option value="{a}"{" selected" if a==_dest else ""}>{a}</option>' for a in AIRPORT_LABELS)}
-    </select>
-  </div>
+        if include_hotel:
+            if include_flight: st.markdown("**Hotel**")
+            else: st.markdown("**Hotel**")
 
-  <!-- Depart date -->
-  <div class="field" id="dep-field">
-    <span class="field-icon">📅</span>
-    <div class="field-body">
-      <div class="field-label">Departure</div>
-      <div class="field-value" id="dep-val">{_dep}</div>
-    </div>
-    <span class="field-chev">›</span>
-    <input type="date" id="dep-date" value="{_dep}" onchange="document.getElementById('dep-val').textContent=fmtDate(this.value);updateNights();">
-  </div>
+            if not include_flight:
+                dest_default = st.session_state.get("dest_label","Tokyo — Narita (NRT)")
+                dest_idx = AIRPORT_LABELS.index(dest_default) if dest_default in AIRPORT_LABELS else 1
+                dest_label = st.selectbox("Destination", AIRPORT_LABELS,
+                    index=dest_idx, key="form_hotel_dest")
+                dest_city = dest_label.split(" —")[0]
+                dest_code = AIRPORTS[dest_label]
+                hc1, hc2 = st.columns(2)
+                with hc1:
+                    checkin_date = st.date_input("Check-in", value=date(2026,6,10),
+                        min_value=date.today(), key="form_checkin")
+                with hc2:
+                    checkout_date = st.date_input("Check-out",
+                        value=date(2026,6,15),
+                        min_value=checkin_date + timedelta(days=1), key="form_checkout")
+                hotel_nights = (checkout_date - checkin_date).days
+                depart_date = checkin_date
+                st.caption(f"{hotel_nights} nights")
+            elif is_roundtrip and flight_nights:
+                hotel_nights = flight_nights
+                st.caption(f"Staying {hotel_nights} nights — matches your flight")
+            else:
+                hotel_nights = st.number_input("Nights", min_value=1, max_value=60,
+                    value=5, key="form_hotel_nights")
 
-  <!-- Return date -->
-  <div class="field" id="ret-field">
-    <span class="field-icon">📅</span>
-    <div class="field-body">
-      <div class="field-label">Return <span class="nights-badge" id="nights-badge">{(date(2026,6,20)-date(2026,6,10)).days} nights</span></div>
-      <div class="field-value" id="ret-val">{_ret}</div>
-    </div>
-    <span class="field-chev">›</span>
-    <input type="date" id="ret-date" value="{_ret}" onchange="document.getElementById('ret-val').textContent=fmtDate(this.value);updateNights();">
-  </div>
+            hotel_style = st.selectbox("Hotel style",
+                ["Budget","Standard","Luxury"],
+                index=["Budget","Standard","Luxury"].index(
+                    st.session_state.get("hotel_style","Standard")),
+                key="form_hotel_style")
 
-  <!-- Hotel destination (hotel-only) -->
-  <div class="field hidden" id="hotel-dest-field">
-    <span class="field-icon">🏙</span>
-    <div class="field-body">
-      <div class="field-label">Destination</div>
-      <div class="field-value" id="hdest-val">{_dest.split(' —')[0]}</div>
-    </div>
-    <span class="field-chev">›</span>
-    <select id="hdest-sel" onchange="updateHDest(this.value)">
-      {''.join(f'<option value="{a}"{" selected" if a==_dest else ""}>{a}</option>' for a in AIRPORT_LABELS)}
-    </select>
-  </div>
+        val_exp = st.slider("Value ←→ Experience", 1, 10,
+            st.session_state.get("val_exp", 5), key="form_val_exp",
+            help="1 = maximize points value · 10 = maximize experience quality")
 
-  <!-- Hotel check-in/out (hotel-only) -->
-  <div class="field hidden" id="checkin-field">
-    <span class="field-icon">📅</span>
-    <div class="field-body">
-      <div class="field-label">Check-in</div>
-      <div class="field-value" id="ci-val">{_dep}</div>
-    </div>
-    <span class="field-chev">›</span>
-    <input type="date" id="ci-date" value="{_dep}" onchange="document.getElementById('ci-val').textContent=fmtDate(this.value);updateNights();">
-  </div>
-  <div class="field hidden" id="checkout-field">
-    <span class="field-icon">📅</span>
-    <div class="field-body">
-      <div class="field-label">Check-out <span class="nights-badge" id="hotel-nights-badge">{_nights} nights</span></div>
-      <div class="field-value" id="co-val">{_ret}</div>
-    </div>
-    <span class="field-chev">›</span>
-    <input type="date" id="co-date" value="{_ret}" onchange="document.getElementById('co-val').textContent=fmtDate(this.value);updateNights();">
-  </div>
+        run = st.form_submit_button(
+            "🔍  Find My Best Trip",
+            use_container_width=True, type="primary")
 
-  <!-- Preferences row -->
-  <div class="prefs-row">
-    <div class="pref-cell" id="cabin-cell">
-      <div class="pref-label">Cabin</div>
-      <select class="pref-select" id="cabin-sel">
-        {''.join(f'<option{" selected" if c==_cabin else ""}>{c}</option>' for c in ["Economy","Premium Economy","Business","First"])}
-      </select>
-    </div>
-    <div class="pref-cell" id="hstyle-cell">
-      <div class="pref-label">Hotel style</div>
-      <select class="pref-select" id="hstyle-sel">
-        {''.join(f'<option{" selected" if h==_hstyle else ""}>{h}</option>' for h in ["Budget","Standard","Luxury"])}
-      </select>
-    </div>
-  </div>
-
-  <!-- Value slider -->
-  <div class="slider-wrap">
-    <div class="slider-label"><span>Max value</span><span>Max experience</span></div>
-    <input type="range" min="1" max="10" value="{_valexp}" id="val-slider">
-  </div>
-
-</div><!-- end card -->
-
-<button type="submit" class="btn">Find My Best Trip</button>
-</form>
-
-<script>
-var AIRPORTS = {airport_js};
-var scope = "{_scope}";
-var tt    = "{_tt}";
-
-function fmtDate(s){{
-  if(!s) return '';
-  var d = new Date(s+'T12:00:00');
-  return d.toLocaleDateString('en-US',{{month:'short',day:'numeric',year:'numeric'}});
-}}
-
-function updateNights(){{
-  var d1 = document.getElementById('dep-date').value;
-  var d2 = document.getElementById('ret-date').value;
-  if(d1 && d2){{
-    var n = Math.round((new Date(d2)-new Date(d1))/(86400000));
-    if(n>0) document.getElementById('nights-badge').textContent = n+' nights';
-  }}
-  var ci = document.getElementById('ci-date').value;
-  var co = document.getElementById('co-date').value;
-  if(ci && co){{
-    var hn = Math.round((new Date(co)-new Date(ci))/(86400000));
-    if(hn>0) document.getElementById('hotel-nights-badge').textContent = hn+' nights';
-  }}
-}}
-
-function updateOrig(v){{
-  document.getElementById('orig-val').textContent = v.split(' —')[0];
-}}
-function updateDest(v){{
-  document.getElementById('dest-val').textContent = v.split(' —')[0];
-  document.getElementById('hdest-val').textContent = v.split(' —')[0];
-  document.getElementById('hdest-sel').value = v;
-}}
-function updateHDest(v){{
-  document.getElementById('hdest-val').textContent = v.split(' —')[0];
-  document.getElementById('dest-sel').value = v;
-  document.getElementById('dest-val').textContent = v.split(' —')[0];
-}}
-
-function swapAirports(){{
-  var os = document.getElementById('orig-sel');
-  var ds = document.getElementById('dest-sel');
-  var tmp = os.value; os.value = ds.value; ds.value = tmp;
-  updateOrig(os.value); updateDest(ds.value);
-}}
-
-function show(id){{ document.getElementById(id).classList.remove('hidden'); }}
-function hide(id){{ document.getElementById(id).classList.add('hidden'); }}
-
-function setScope(s){{
-  scope = s;
-  document.querySelectorAll('.scope-btn').forEach(function(b){{
-    b.classList.toggle('active', b.textContent.trim()===s);
-  }});
-  applyScope();
-}}
-
-function setTT(t){{
-  tt = t;
-  document.querySelectorAll('.tt-btn').forEach(function(b){{
-    b.classList.toggle('active', b.dataset.tt === t);
-  }});
-  applyScope();
-}}
-
-function applyScope(){{
-  var isF = scope==='Flight + Hotel' || scope==='Flight only';
-  var isH = scope==='Flight + Hotel' || scope==='Hotel only';
-  var isHO = scope==='Hotel only';
-  var isRT = tt==='Round trip';
-
-  // flight fields
-  ['tt-bar','flight-fields','swap-row','flight-fields2','dep-field','cabin-cell'].forEach(function(id){{
-    document.getElementById(id).classList.toggle('hidden', !isF);
-  }});
-  document.getElementById('ret-field').classList.toggle('hidden', !isF || !isRT);
-
-  // hotel-only fields
-  ['hotel-dest-field','checkin-field','checkout-field'].forEach(function(id){{
-    document.getElementById(id).classList.toggle('hidden', !isHO);
-  }});
-
-  // prefs
-  document.getElementById('hstyle-cell').classList.toggle('hidden', !isH);
-}}
-
-applyScope();
-
-document.getElementById('f').onsubmit = function(e){{
-  e.preventDefault();
-  var data = {{
-    scope:   scope,
-    tt:      tt,
-    orig:    document.getElementById('orig-sel').value,
-    dest:    document.getElementById('dest-sel').value,
-    dep:     document.getElementById('dep-date').value,
-    ret:     document.getElementById('ret-date').value,
-    ci:      document.getElementById('ci-date') ? document.getElementById('ci-date').value : '',
-    co:      document.getElementById('co-date') ? document.getElementById('co-date').value : '',
-    cabin:   document.getElementById('cabin-sel').value,
-    hstyle:  document.getElementById('hstyle-sel').value,
-    valexp:  document.getElementById('val-slider').value,
-  }};
-  var qs = Object.entries(data).map(function(kv){{
-    return encodeURIComponent(kv[0])+'='+encodeURIComponent(kv[1]);
-  }}).join('&');
-  // postMessage to parent — window.top is sandboxed, postMessage always works
-  window.parent.postMessage({{streamlit_search: qs}}, '*');
-}};
-</script>
-</body>
-</html>"""
-
-    _result = components.html(card_html, height=640, scrolling=False)
-
-    # ── Read component return value ──
-    # components.html() doesn't return values — use session_state form pattern instead
-    # The component uses postMessage to write a hidden Streamlit form, triggered by submit
-    # We use a workaround: a hidden st.form that the component posts to via URL params
-    qp = st.query_params
-    run = "scope" in qp
-
-    def _parse_qp(qp):
-        _scope_val = qp.get("scope", "Flight + Hotel")
-        include_flight = _scope_val in ["Flight + Hotel", "Flight only"]
-        include_hotel  = _scope_val in ["Flight + Hotel", "Hotel only"]
-        is_roundtrip   = qp.get("tt", "Round trip") == "Round trip"
-        _orig = qp.get("orig", "San Francisco, CA — SFO (SFO)")
-        _dst  = qp.get("dest", "Tokyo — Narita (NRT)")
-        origin_city = _orig.split(" —")[0]
-        origin_code = AIRPORTS.get(_orig, "SFO")
-        dest_city   = _dst.split(" —")[0]
-        dest_code   = AIRPORTS.get(_dst, "NRT")
-        _dep_s = qp.get("dep", "2026-06-10")
-        _ret_s = qp.get("ret", "2026-06-20")
-        try:
-            depart_date = date.fromisoformat(_dep_s)
-            return_date = date.fromisoformat(_ret_s) if is_roundtrip else None
-        except ValueError:
-            depart_date = date(2026,6,10); return_date = date(2026,6,20)
-        cabin       = qp.get("cabin",  "Business")
-        hotel_style = qp.get("hstyle", "Standard")
-        val_exp     = int(qp.get("valexp", 5))
-        if include_flight and is_roundtrip and return_date:
-            flight_nights = (return_date - depart_date).days
-            hotel_nights  = flight_nights
-            dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
-        elif include_flight:
-            flight_nights = None; hotel_nights = None
-            dates_str = f"{depart_date.strftime('%b %d, %Y')} (one way)"
-        else:
-            try:
-                checkin  = date.fromisoformat(qp.get("ci","2026-06-10"))
-                checkout = date.fromisoformat(qp.get("co","2026-06-15"))
-            except ValueError:
-                checkin = date(2026,6,10); checkout = date(2026,6,15)
-            hotel_nights = (checkout - checkin).days
-            depart_date  = checkin; return_date = None
-            flight_nights = None
-            dates_str = f"{checkin.strftime('%b %d')} – {checkout.strftime('%b %d, %Y')}"
-        nights = hotel_nights if hotel_nights else (flight_nights or 0)
-        # Persist
-        st.session_state.update({
-            "trip_scope": _scope_val, "trip_type": qp.get("tt","Round trip"),
-            "origin_label": _orig, "dest_label": _dst,
-            "depart_str": _dep_s, "return_str": _ret_s,
-            "cabin": cabin, "hotel_style": hotel_style,
-            "hotel_nights_n": hotel_nights or 5, "val_exp": val_exp,
-        })
-        return dict(
-            include_flight=include_flight, include_hotel=include_hotel,
-            is_roundtrip=is_roundtrip, origin_city=origin_city, origin_code=origin_code,
-            dest_city=dest_city, dest_code=dest_code, depart_date=depart_date,
-            return_date=return_date, cabin=cabin, hotel_style=hotel_style,
-            val_exp=val_exp, dates_str=dates_str, nights=nights,
-            flight_nights=flight_nights, hotel_nights=hotel_nights,
-        )
-
+    # ── Persist values for next render ──
     if run:
-        _v = _parse_qp(qp)
-        st.query_params.clear()  # clear only after successful parse
-    else:
-        # Use last persisted values or defaults
-        _v = _parse_qp({
-            "scope":  st.session_state.get("trip_scope","Flight + Hotel"),
-            "tt":     st.session_state.get("trip_type","Round trip"),
-            "orig":   st.session_state.get("origin_label","San Francisco, CA — SFO (SFO)"),
-            "dest":   st.session_state.get("dest_label","Tokyo — Narita (NRT)"),
-            "dep":    st.session_state.get("depart_str","2026-06-10"),
-            "ret":    st.session_state.get("return_str","2026-06-20"),
-            "cabin":  st.session_state.get("cabin","Business"),
-            "hstyle": st.session_state.get("hotel_style","Standard"),
-            "valexp": str(st.session_state.get("val_exp",5)),
+        st.session_state.update({
+            "trip_scope":   search_scope,
+            "trip_type":    "Round trip" if is_roundtrip else "One way",
+            "origin_label": origin_label if include_flight else st.session_state.get("origin_label",""),
+            "dest_label":   dest_label if (include_flight or include_hotel) else st.session_state.get("dest_label",""),
+            "depart_date":  depart_date,
+            "return_date":  return_date,
+            "cabin":        cabin,
+            "hotel_style":  hotel_style,
+            "val_exp":      val_exp,
         })
 
-    include_flight = _v["include_flight"]; include_hotel  = _v["include_hotel"]
-    is_roundtrip   = _v["is_roundtrip"];   origin_city    = _v["origin_city"]
-    origin_code    = _v["origin_code"];    dest_city      = _v["dest_city"]
-    dest_code      = _v["dest_code"];      depart_date    = _v["depart_date"]
-    return_date    = _v["return_date"];    cabin          = _v["cabin"]
-    hotel_style    = _v["hotel_style"];    val_exp        = _v["val_exp"]
-    dates_str      = _v["dates_str"];      nights         = _v["nights"]
-    flight_nights  = _v["flight_nights"];  hotel_nights   = _v["hotel_nights"]
+    # ── Date summary string ──
+    if include_flight and is_roundtrip and return_date:
+        dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
+    elif include_flight:
+        dates_str = f"{depart_date.strftime('%b %d, %Y')} (one way)"
+    elif include_hotel and hotel_nights:
+        dates_str = f"{depart_date.strftime('%b %d')} – {(depart_date + timedelta(days=hotel_nights)).strftime('%b %d, %Y')}"
+    else:
+        dates_str = ""
+
+    nights = hotel_nights if hotel_nights else (flight_nights or 0)
     st.markdown("---")
 
     if not run:
@@ -1278,96 +1000,58 @@ cur_page = st.session_state.get("page", "profile")
 _page_labels = {"profile": "My Profile", "trip": "Plan a Trip", "admin": "Admin"}
 _cur_label   = _page_labels.get(cur_page, "My Profile")
 
-# ── Hamburger nav ──
-import streamlit.components.v1 as _nav_components
+# ── Nav: hamburger icon + page title using reliable st.button ──
 
-_nav_html = f"""<!DOCTYPE html><html><head>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-*{{box-sizing:border-box;margin:0;padding:0;
-   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}}
-body{{background:#fff;margin:0;padding:0;}}
-.bar{{display:flex;align-items:center;padding:8px 0 8px;gap:10px;
-      background:#fff;}}
-.hbtn{{background:#fff;border:1px solid #e5e7eb;border-radius:8px;
-       cursor:pointer;width:40px;height:40px;display:flex;flex-direction:column;
-       align-items:center;justify-content:center;gap:5px;flex-shrink:0;}}
-.hbtn:active{{background:#f3f4f6;}}
-.hline{{display:block;width:16px;height:2px;background:#374151;border-radius:1px;}}
-.title-block{{flex:1;line-height:1.25;}}
-.sub{{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;}}
-.pg{{font-size:16px;font-weight:600;color:#111827;}}
-.menu{{max-height:0;overflow:hidden;background:#fff;
-       border:0px solid #e5e7eb;border-radius:12px;
-       transition:max-height .2s ease,border .1s ease;}}
-.menu.open{{max-height:240px;border:1px solid #e5e7eb;margin-top:4px;}}
-.item{{display:flex;align-items:center;gap:12px;padding:13px 16px;
-       cursor:pointer;font-size:14px;font-weight:500;color:#374151;
-       border-bottom:1px solid #f3f4f6;background:#fff;
-       -webkit-tap-highlight-color:rgba(0,0,0,.05);}}
-.item:last-child{{border-bottom:none;}}
-.item:active{{background:#f3f4f6;}}
-.item.active{{color:#111827;font-weight:600;}}
-.dot{{margin-left:auto;width:7px;height:7px;border-radius:50%;
-      background:#111827;flex-shrink:0;}}
-.ico{{font-size:18px;line-height:1;}}
-</style>
-</head>
-<body>
-<div class="bar">
-  <button class="hbtn" id="hbtn" onclick="toggle()" aria-label="Menu">
-    <span class="hline"></span>
-    <span class="hline"></span>
-    <span class="hline"></span>
-  </button>
-  <div class="title-block">
-    <div class="sub">AI Loyalty Optimizer</div>
-    <div class="pg">{_cur_label}</div>
-  </div>
-</div>
-<div class="menu" id="hmenu">
-  <div class="item {'active' if cur_page=='profile' else ''}" onclick="go('profile')">
-    <span class="ico">&#128100;</span><span>My Profile</span>
-    {'<span class="dot"></span>' if cur_page=='profile' else ''}
-  </div>
-  <div class="item {'active' if cur_page=='trip' else ''}" onclick="go('trip')">
-    <span class="ico">&#9992;&#65039;</span><span>Plan a Trip</span>
-    {'<span class="dot"></span>' if cur_page=='trip' else ''}
-  </div>
-  <div class="item {'active' if cur_page=='admin' else ''}" onclick="go('admin')">
-    <span class="ico">&#9881;&#65039;</span><span>Admin</span>
-    {'<span class="dot"></span>' if cur_page=='admin' else ''}
-  </div>
-</div>
-<script>
-var open = false;
-function toggle(){{
-  open = !open;
-  var m = document.getElementById('hmenu');
-  m.classList.toggle('open', open);
-  // Tell parent iframe to resize
-  window.parent.postMessage({{streamlit_resize: open ? 216 : 58}}, '*');
-}}
-function go(page){{
-  open = false;
-  document.getElementById('hmenu').classList.remove('open');
-  window.parent.postMessage({{streamlit_nav: page}}, '*');
-}}
-document.addEventListener('click', function(e){{
-  if(open && !e.target.closest('#hbtn') && !e.target.closest('#hmenu')){{
-    open = false;
-    document.getElementById('hmenu').classList.remove('open');
-    window.parent.postMessage({{streamlit_resize: 58}}, '*');
-  }}
-}});
-</script>
-</body></html>"""
+# Nav header row
+_nav_col1, _nav_col2, _nav_col3, _nav_col4 = st.columns([0.5, 2.5, 1.2, 1.2])
+with _nav_col1:
+    # Hamburger button — toggles a session_state flag for the menu
+    if "show_nav_menu" not in st.session_state:
+        st.session_state.show_nav_menu = False
+    if st.button("☰", key="hamburger_btn", help="Menu"):
+        st.session_state.show_nav_menu = not st.session_state.show_nav_menu
+        st.rerun()
+with _nav_col2:
+    st.markdown(
+        f'<div style="padding:6px 0;">'
+        f'<div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;">AI Loyalty Optimizer</div>'
+        f'<div style="font-size:15px;font-weight:600;color:#111827;">{_cur_label}</div>'
+        f'</div>',
+        unsafe_allow_html=True)
+with _nav_col3:
+    pass
+with _nav_col4:
+    pass
 
-_nav_components.html(_nav_html, height=58, scrolling=False, key="nav_bar")
+# Dropdown menu — shown when hamburger tapped
+if st.session_state.get("show_nav_menu"):
+    with st.container():
+        st.markdown(
+            '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;'
+            'overflow:hidden;margin-bottom:.5rem;">',
+            unsafe_allow_html=True)
+        menu_items = [
+            ("👤", "My Profile", "profile"),
+            ("✈️", "Plan a Trip", "trip"),
+            ("⚙️", "Admin", "admin"),
+        ]
+        for icon, label, page_key in menu_items:
+            is_active = cur_page == page_key
+            btn_type  = "primary" if is_active else "secondary"
+            if st.button(
+                f"{icon}  {label}",
+                key=f"menu_{page_key}",
+                use_container_width=True,
+                type=btn_type,
+            ):
+                st.session_state.page = page_key
+                st.session_state.show_nav_menu = False
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
 st.markdown(
-    "<hr style='margin:2px 0 .75rem;border:none;border-top:1px solid #e8e8e8;'>",
+    "<hr style='margin:4px 0 .75rem;border:none;border-top:1px solid #e8e8e8;'>",
     unsafe_allow_html=True)
-
 
 if cur_page == "profile":
     page_profile()
