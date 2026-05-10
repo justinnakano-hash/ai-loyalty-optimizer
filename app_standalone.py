@@ -264,6 +264,37 @@ footer { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
+# ── postMessage listener — receives nav + search events from component iframes ──
+st.markdown("""
+<script>
+window.addEventListener('message', function(e) {
+  if (!e.data) return;
+  // Nav navigation
+  if (e.data.streamlit_nav) {
+    window.location.href = window.location.pathname + '?nav=' + e.data.streamlit_nav;
+  }
+  // Search form submit
+  if (e.data.streamlit_search) {
+    window.location.href = window.location.pathname + '?' + e.data.streamlit_search;
+  }
+  // Resize nav iframe when menu opens/closes
+  if (e.data.streamlit_resize) {
+    // Find the nav iframe (first iframe on page) and resize it
+    var frames = document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {
+      var f = frames[i];
+      // Nav iframe is small — identify by current height ~58px
+      if (f.style.height && parseInt(f.style.height) < 300) {
+        f.style.height = e.data.streamlit_resize + 'px';
+        f.style.minHeight = e.data.streamlit_resize + 'px';
+        break;
+      }
+    }
+  }
+}, false);
+</script>
+""", unsafe_allow_html=True)
+
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
 # ─────────────────────────────────────────────
@@ -927,13 +958,8 @@ document.getElementById('f').onsubmit = function(e){{
   var qs = Object.entries(data).map(function(kv){{
     return encodeURIComponent(kv[0])+'='+encodeURIComponent(kv[1]);
   }}).join('&');
-  // window.top is same-origin on Streamlit Cloud — reliable cross-iframe navigation
-  try {{
-    window.top.location.href = window.top.location.pathname + '?' + qs;
-  }} catch(err) {{
-    // Fallback for local dev where top may be cross-origin
-    window.parent.postMessage({{type:'streamlit:setQueryParam', qs: qs}}, '*');
-  }}
+  // postMessage to parent — window.top is sandboxed, postMessage always works
+  window.parent.postMessage({{streamlit_search: qs}}, '*');
 }};
 </script>
 </body>
@@ -1258,31 +1284,41 @@ import streamlit.components.v1 as _nav_components
 _nav_html = f"""<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-*{{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}}
-html,body{{background:transparent;overflow:visible;}}
-.bar{{display:flex;align-items:center;padding:6px 0 8px;gap:10px;}}
+*{{box-sizing:border-box;margin:0;padding:0;
+   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}}
+body{{background:#fff;margin:0;padding:0;}}
+.bar{{display:flex;align-items:center;padding:8px 0 8px;gap:10px;
+      background:#fff;}}
 .hbtn{{background:#fff;border:1px solid #e5e7eb;border-radius:8px;
-       cursor:pointer;width:38px;height:38px;display:flex;flex-direction:column;
-       align-items:center;justify-content:center;gap:4px;flex-shrink:0;}}
+       cursor:pointer;width:40px;height:40px;display:flex;flex-direction:column;
+       align-items:center;justify-content:center;gap:5px;flex-shrink:0;}}
 .hbtn:active{{background:#f3f4f6;}}
-.hline{{display:block;width:15px;height:2px;background:#374151;border-radius:1px;}}
-.title-block{{flex:1;line-height:1.2;}}
+.hline{{display:block;width:16px;height:2px;background:#374151;border-radius:1px;}}
+.title-block{{flex:1;line-height:1.25;}}
 .sub{{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;}}
 .pg{{font-size:16px;font-weight:600;color:#111827;}}
-.menu{{display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;
-       overflow:hidden;margin-top:4px;}}
+.menu{{max-height:0;overflow:hidden;background:#fff;
+       border:0px solid #e5e7eb;border-radius:12px;
+       transition:max-height .2s ease,border .1s ease;}}
+.menu.open{{max-height:240px;border:1px solid #e5e7eb;margin-top:4px;}}
 .item{{display:flex;align-items:center;gap:12px;padding:13px 16px;
        cursor:pointer;font-size:14px;font-weight:500;color:#374151;
-       border-bottom:1px solid #f3f4f6;user-select:none;}}
+       border-bottom:1px solid #f3f4f6;background:#fff;
+       -webkit-tap-highlight-color:rgba(0,0,0,.05);}}
 .item:last-child{{border-bottom:none;}}
 .item:active{{background:#f3f4f6;}}
-.item.active{{color:#111827;font-weight:600;background:#f9fafb;}}
-.dot{{margin-left:auto;width:7px;height:7px;border-radius:50%;background:#111827;flex-shrink:0;}}
+.item.active{{color:#111827;font-weight:600;}}
+.dot{{margin-left:auto;width:7px;height:7px;border-radius:50%;
+      background:#111827;flex-shrink:0;}}
+.ico{{font-size:18px;line-height:1;}}
 </style>
-</head><body>
+</head>
+<body>
 <div class="bar">
-  <button class="hbtn" id="hbtn" onclick="toggle()" aria-label="Open menu">
-    <span class="hline"></span><span class="hline"></span><span class="hline"></span>
+  <button class="hbtn" id="hbtn" onclick="toggle()" aria-label="Menu">
+    <span class="hline"></span>
+    <span class="hline"></span>
+    <span class="hline"></span>
   </button>
   <div class="title-block">
     <div class="sub">AI Loyalty Optimizer</div>
@@ -1291,45 +1327,43 @@ html,body{{background:transparent;overflow:visible;}}
 </div>
 <div class="menu" id="hmenu">
   <div class="item {'active' if cur_page=='profile' else ''}" onclick="go('profile')">
-    <span>👤</span><span>My Profile</span>{'<span class="dot"></span>' if cur_page=='profile' else ''}
+    <span class="ico">&#128100;</span><span>My Profile</span>
+    {'<span class="dot"></span>' if cur_page=='profile' else ''}
   </div>
   <div class="item {'active' if cur_page=='trip' else ''}" onclick="go('trip')">
-    <span>✈️</span><span>Plan a Trip</span>{'<span class="dot"></span>' if cur_page=='trip' else ''}
+    <span class="ico">&#9992;&#65039;</span><span>Plan a Trip</span>
+    {'<span class="dot"></span>' if cur_page=='trip' else ''}
   </div>
   <div class="item {'active' if cur_page=='admin' else ''}" onclick="go('admin')">
-    <span>⚙️</span><span>Admin</span>{'<span class="dot"></span>' if cur_page=='admin' else ''}
+    <span class="ico">&#9881;&#65039;</span><span>Admin</span>
+    {'<span class="dot"></span>' if cur_page=='admin' else ''}
   </div>
 </div>
 <script>
-var CLOSED_H = 56, OPEN_H = 56 + 3*50 + 16;
-function setH(h){{
-  document.documentElement.style.height = h+'px';
-  document.body.style.height = h+'px';
-  // Resize the Streamlit iframe
-  var f = window.frameElement;
-  if(f) f.style.height = h+'px';
-}}
+var open = false;
 function toggle(){{
+  open = !open;
   var m = document.getElementById('hmenu');
-  var open = m.style.display !== 'block';
-  m.style.display = open ? 'block' : 'none';
-  setH(open ? OPEN_H : CLOSED_H);
+  m.classList.toggle('open', open);
+  // Tell parent iframe to resize
+  window.parent.postMessage({{streamlit_resize: open ? 216 : 58}}, '*');
 }}
 function go(page){{
-  document.getElementById('hmenu').style.display = 'none';
-  setH(CLOSED_H);
-  try{{
-    window.top.location.href = window.top.location.pathname + '?nav=' + page;
-  }}catch(e){{
-    window.parent.postMessage({{streamlit_nav:page}},'*');
-  }}
+  open = false;
+  document.getElementById('hmenu').classList.remove('open');
+  window.parent.postMessage({{streamlit_nav: page}}, '*');
 }}
-setH(CLOSED_H);
+document.addEventListener('click', function(e){{
+  if(open && !e.target.closest('#hbtn') && !e.target.closest('#hmenu')){{
+    open = false;
+    document.getElementById('hmenu').classList.remove('open');
+    window.parent.postMessage({{streamlit_resize: 58}}, '*');
+  }}
+}});
 </script>
 </body></html>"""
 
-_nav_components.html(_nav_html, height=56, scrolling=False)
-
+_nav_components.html(_nav_html, height=58, scrolling=False, key="nav_bar")
 st.markdown(
     "<hr style='margin:2px 0 .75rem;border:none;border-top:1px solid #e8e8e8;'>",
     unsafe_allow_html=True)
