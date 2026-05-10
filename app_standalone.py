@@ -617,6 +617,7 @@ if _qp_scope in ["fh", "fl", "ht"]:
     st.session_state["t_scope"] = _scope_map[_qp_scope]
     st.session_state["page"]    = "trip"
     st.query_params.clear()
+    st.rerun()
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
@@ -1758,7 +1759,7 @@ def page_trip():
   .st-tile.active .st-label {{ color:#fff; font-weight:700; }}
 </style>
 </head>
-<body>
+<body data-active="{current}">
 <div class="st-tiles">{tiles_html}</div>
 </body>
 </html>
