@@ -380,52 +380,68 @@ div.m-cta button:hover { background: #2a2a2a !important; }
 /* Hide column hint labels and other desktop chrome on mobile */
 .m-hide-on-mobile { display: none !important; }
 
-/* ── Mobile trip form ── */
-/* Row-style form items: label left, value right, widget below */
-.m-form-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: .7rem 0; border-bottom: 1px solid #f0f0f0;
-    cursor: default;
-}
-.m-form-row:last-child { border-bottom: none; }
-.m-form-label { font-size: 14px; font-weight: 500; color: #111; }
-.m-form-value { font-size: 13px; color: #666; text-align: right;
-    max-width: 55%; white-space: nowrap; overflow: hidden;
-    text-overflow: ellipsis; }
-.m-form-value.placeholder { color: #bbb; }
+/* ── Mobile trip form — matches screenshot layout ── */
 
-/* Airport search: show only IATA code + city in selectbox */
-.m-card div[data-testid="stSelectbox"] label { display: none !important; }
-.m-card div[data-testid="stSelectbox"] > div > div {
-    background: #f7f6f2 !important; border: none !important;
+/* Section card: rounded gray container, label left + current value right */
+.mf-section {
+    background: #f5f3ec; border-radius: 14px;
+    padding: 0; margin-bottom: .65rem; overflow: hidden;
+}
+/* Header row inside a section */
+.mf-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .85rem 1rem; font-size: 14px;
+}
+.mf-header-label { font-weight: 600; color: #111; }
+.mf-header-value { color: #666; font-size: 13px; font-weight: 400;
+    text-align: right; max-width: 55%;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Body that expands inside a section */
+.mf-body {
+    padding: 0 .85rem .85rem;
+}
+
+/* Route sub-rows: From / To / Type inside the Route section */
+.mf-route-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: .55rem 0; border-top: 1px solid #eceae3;
+}
+.mf-route-lbl {
+    font-size: 13px; color: #888; width: 38px; flex-shrink: 0; padding-top: 6px;
+}
+.mf-route-val { flex: 1; }
+
+/* Hide Streamlit widget labels inside trip form sections */
+.mf-body div[data-testid="stSelectbox"] label,
+.mf-body div[data-testid="stDateInput"] label,
+.mf-body div[data-testid="stNumberInput"] label { display: none !important; }
+
+/* Clean up selectbox chrome inside sections */
+.mf-body div[data-testid="stSelectbox"] > div > div {
+    background: #fff !important; border-color: #e0e0e0 !important;
     border-radius: 10px !important; font-size: 14px !important;
 }
-
-/* Date inputs side by side */
-.m-dates-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.m-dates-row div[data-testid="stDateInput"] label {
-    font-size: 11px !important; color: #888 !important; }
-
-/* Cabin chips */
-.m-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: .5rem 0 .25rem; }
-.m-chip-opt {
-    padding: 7px 14px; border-radius: 20px; font-size: 13px;
-    border: 1.5px solid #e8e8e8; background: #fff; color: #555;
-    cursor: pointer; white-space: nowrap;
-}
-.m-chip-opt.selected {
-    background: #111; color: #fff; border-color: #111; font-weight: 600;
+.mf-body div[data-testid="stDateInput"] > div > div {
+    background: #fff !important; border-color: #e0e0e0 !important;
+    border-radius: 10px !important;
 }
 
-/* Value / experience toggle */
-.m-pref-row { display: flex; justify-content: space-between;
-    align-items: center; gap: 8px; padding: .4rem 0; }
-.m-pref-label { font-size: 13px; color: #888; white-space: nowrap; }
-.m-pref-active { font-size: 13px; font-weight: 600; color: #111; }
+/* Seg buttons inside trip form */
+.mf-seg button {
+    background: #fff !important; color: #111 !important;
+    border: 1px solid #e8e8e8 !important; border-radius: 10px !important;
+    font-size: 13px !important; font-weight: 500 !important;
+    min-height: 42px !important; box-shadow: none !important;
+}
+.mf-seg button[kind="primary"] {
+    background: #111 !important; color: #fff !important;
+    border-color: #111 !important; font-weight: 600 !important;
+}
 
-/* Tighter slider on mobile */
-.m-card div[data-testid="stSlider"] { padding: 0 !important; }
-.m-card div[data-testid="stSlider"] label { display: none !important; }
+/* Tighter slider */
+.mf-body div[data-testid="stSlider"] { padding: 0 .1rem !important; }
+.mf-body div[data-testid="stSlider"] label { display: none !important; }
 </style>
 """
 
@@ -2026,190 +2042,232 @@ def page_trip_mobile():
         st.markdown('<div class="mock-banner">Preview mode — sample data.</div>',
                     unsafe_allow_html=True)
 
-    # ── What to search ──
+    # ── Helper: segmented buttons with mf-seg class ──
+    def mf_seg(options, state_key, key_prefix, n_cols=None):
+        current = st.session_state.get(state_key, options[0])
+        n = n_cols or len(options)
+        st.markdown('<div class="mf-seg">', unsafe_allow_html=True)
+        cols = st.columns(n)
+        for i, opt in enumerate(options):
+            with cols[i % n]:
+                if st.button(opt, key=f"{key_prefix}_{i}",
+                             use_container_width=True,
+                             type="primary" if opt == current else "secondary"):
+                    st.session_state[state_key] = opt
+                    st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        return st.session_state[state_key]
+
+    # ── OPTIMIZE FOR ──
+    cur_scope = st.session_state.get("m_search_scope", "Flight + Hotel")
+    scope_display = {"Flight + Hotel": "Flight + Hotel",
+                     "Flight only": "Flight", "Hotel only": "Hotel"}
     st.markdown(
-        '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
-        'letter-spacing:.05em;margin:.25rem 0 .6rem;">Optimize for</p>',
+        f'<div class="mf-section">'
+        f'<div class="mf-header">'
+        f'<span class="mf-header-label">Optimize for</span>'
+        f'<span class="mf-header-value">{scope_display.get(cur_scope, cur_scope)}</span>'
+        f'</div><div class="mf-body">',
         unsafe_allow_html=True)
-    search_scope = _seg_buttons(
-        ["Flight + Hotel", "Flight", "Hotel"],
-        "m_search_scope", "m_scope", n_cols=3)
-    # Normalise label back to what the rest of the code expects
-    if search_scope == "Flight": search_scope = "Flight only"
-    if search_scope == "Hotel":  search_scope = "Hotel only"
+    raw_scope = mf_seg(["Flight + Hotel", "Flight", "Hotel"],
+                       "m_search_scope", "mf_scope", n_cols=3)
+    st.markdown('</div></div>', unsafe_allow_html=True)
+
+    scope_map    = {"Flight": "Flight only", "Hotel": "Hotel only"}
+    search_scope = scope_map.get(raw_scope, raw_scope)
     include_flight = search_scope in ["Flight + Hotel", "Flight only"]
     include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
 
-    st.markdown('<div style="height:.6rem"></div>', unsafe_allow_html=True)
-
-    # ── Trip type (round trip / one way) — only for flights ──
+    # ── ROUTE ──
     if include_flight:
-        trip_type    = _seg_buttons(["Round trip", "One way"], "m_trip_type", "m_tt", n_cols=2)
-        is_roundtrip = trip_type == "Round trip"
-    else:
-        is_roundtrip = False
-
-    st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
-
-    # ── Route — compact card rows ──
-    st.markdown(
-        '<div style="background:#f7f6f2;border-radius:14px;padding:.25rem .9rem;margin-bottom:.75rem;">',
-        unsafe_allow_html=True)
-
-    if include_flight:
-        # From
+        cur_orig = st.session_state.get("m_origin_sel", "San Francisco, CA — SFO (SFO)")
+        cur_dest = st.session_state.get("m_dest_sel",   "Tokyo — Narita (NRT)")
+        orig_code = AIRPORTS.get(cur_orig, "—")
+        dest_code_prev = AIRPORTS.get(cur_dest, "—")
         st.markdown(
-            '<div class="m-form-row"><span class="m-form-label">From</span></div>',
+            f'<div class="mf-section">'
+            f'<div class="mf-header">'
+            f'<span class="mf-header-label">Route</span>'
+            f'<span class="mf-header-value">{orig_code} → {dest_code_prev}</span>'
+            f'</div><div class="mf-body">',
             unsafe_allow_html=True)
-        origin_label = st.selectbox(
-            "From", AIRPORT_LABELS,
-            index=AIRPORT_LABELS.index("San Francisco, CA — SFO (SFO)"),
+
+        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">From</span><div class="mf-route-val">',
+                    unsafe_allow_html=True)
+        origin_label = st.selectbox("From", AIRPORT_LABELS,
+            index=AIRPORT_LABELS.index(cur_orig),
             key="m_origin_sel", label_visibility="collapsed")
+        st.markdown('</div></div>', unsafe_allow_html=True)
         origin_code = AIRPORTS[origin_label]
         origin_city = origin_label.split(" —")[0]
 
-        # To
-        st.markdown(
-            '<div class="m-form-row"><span class="m-form-label">To</span></div>',
-            unsafe_allow_html=True)
-        dest_label = st.selectbox(
-            "To", AIRPORT_LABELS,
-            index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
+        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">To</span><div class="mf-route-val">',
+                    unsafe_allow_html=True)
+        dest_label = st.selectbox("To", AIRPORT_LABELS,
+            index=AIRPORT_LABELS.index(cur_dest),
             key="m_dest_sel", label_visibility="collapsed")
+        st.markdown('</div></div>', unsafe_allow_html=True)
         dest_code = AIRPORTS[dest_label]
         dest_city = dest_label.split(" —")[0]
+
+        st.markdown('<div class="mf-route-row"><span class="mf-route-lbl">Type</span><div class="mf-route-val">',
+                    unsafe_allow_html=True)
+        trip_type = mf_seg(["Round trip", "One way"], "m_trip_type", "mf_tt", n_cols=2)
+        st.markdown('</div></div>', unsafe_allow_html=True)
+        is_roundtrip = trip_type == "Round trip"
+
+        st.markdown('</div></div>', unsafe_allow_html=True)
     else:
-        # Hotel-only destination
+        cur_dest = st.session_state.get("m_dest_sel", "Tokyo — Narita (NRT)")
+        dest_code_prev = AIRPORTS.get(cur_dest, "—")
         st.markdown(
-            '<div class="m-form-row"><span class="m-form-label">Destination</span></div>',
+            f'<div class="mf-section">'
+            f'<div class="mf-header">'
+            f'<span class="mf-header-label">Destination</span>'
+            f'<span class="mf-header-value">{dest_code_prev}</span>'
+            f'</div><div class="mf-body">',
             unsafe_allow_html=True)
-        dest_label = st.selectbox(
-            "Destination", AIRPORT_LABELS,
-            index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
-            key="m_hotel_dest_sel", label_visibility="collapsed")
-        dest_city = dest_label.split(" —")[0]
-        dest_code = AIRPORTS[dest_label]
+        dest_label = st.selectbox("Destination", AIRPORT_LABELS,
+            index=AIRPORT_LABELS.index(cur_dest),
+            key="m_dest_sel", label_visibility="collapsed")
+        st.markdown('</div></div>', unsafe_allow_html=True)
+        dest_city   = dest_label.split(" —")[0]
+        dest_code   = AIRPORTS[dest_label]
         origin_city = ""; origin_code = ""
+        is_roundtrip = False
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ── DATES ──
+    dep_val = st.session_state.get("m_depart_val", date(2026, 6, 10))
+    ret_val = st.session_state.get("m_return_val", date(2026, 6, 20))
+    ci_val  = st.session_state.get("m_checkin_val", date(2026, 6, 10))
+    co_val  = st.session_state.get("m_checkout_val", date(2026, 6, 15))
+    if include_flight:
+        if is_roundtrip:
+            dates_preview = f"{dep_val.strftime('%b %d')} – {ret_val.strftime('%b %d')}"
+        else:
+            dates_preview = dep_val.strftime('%b %d, %Y')
+    else:
+        dates_preview = f"{ci_val.strftime('%b %d')} – {co_val.strftime('%b %d')}"
 
-    # ── Dates ──
     st.markdown(
-        '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
-        'letter-spacing:.05em;margin:.1rem 0 .5rem;">Dates</p>',
+        f'<div class="mf-section">'
+        f'<div class="mf-header">'
+        f'<span class="mf-header-label">Dates</span>'
+        f'<span class="mf-header-value">{dates_preview}</span>'
+        f'</div><div class="mf-body">',
         unsafe_allow_html=True)
-    st.markdown('<div class="m-dates-row">', unsafe_allow_html=True)
 
     if include_flight:
-        col_a, col_b = st.columns(2)
-        with col_a:
-            depart_date = st.date_input(
-                "Depart", value=date(2026, 6, 10),
-                min_value=date.today(), key="m_depart_date")
         if is_roundtrip:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                depart_date = st.date_input("Depart", value=dep_val,
+                                            min_value=date.today(), key="m_depart_date")
+                st.session_state.m_depart_val = depart_date
             with col_b:
-                return_date = st.date_input(
-                    "Return",
-                    value=depart_date + timedelta(days=10),
-                    min_value=depart_date + timedelta(days=1),
-                    key="m_return_date")
+                return_date = st.date_input("Return",
+                                            value=max(ret_val, depart_date + timedelta(days=1)),
+                                            min_value=depart_date + timedelta(days=1),
+                                            key="m_return_date")
+                st.session_state.m_return_val = return_date
             flight_nights = (return_date - depart_date).days
         else:
+            depart_date = st.date_input("Departure", value=dep_val,
+                                        min_value=date.today(), key="m_depart_date")
+            st.session_state.m_depart_val = depart_date
             return_date   = None
             flight_nights = None
     else:
         col_a, col_b = st.columns(2)
         with col_a:
-            checkin_date = st.date_input(
-                "Check-in", value=date(2026, 6, 10),
-                min_value=date.today(), key="m_checkin_date")
+            checkin_date = st.date_input("Check-in", value=ci_val,
+                                         min_value=date.today(), key="m_checkin_date")
+            st.session_state.m_checkin_val = checkin_date
         with col_b:
-            checkout_date = st.date_input(
-                "Check-out",
-                value=checkin_date + timedelta(days=5),
-                min_value=checkin_date + timedelta(days=1),
-                key="m_checkout_date")
+            checkout_date = st.date_input("Check-out",
+                                          value=max(co_val, checkin_date + timedelta(days=1)),
+                                          min_value=checkin_date + timedelta(days=1),
+                                          key="m_checkout_date")
+            st.session_state.m_checkout_val = checkout_date
         depart_date   = checkin_date
         return_date   = None
         flight_nights = (checkout_date - checkin_date).days
 
-    st.markdown('</div><div style="height:.75rem"></div>', unsafe_allow_html=True)
+    st.markdown('</div></div>', unsafe_allow_html=True)
 
-    # ── Cabin class — chip selector ──
+    # ── PREFERENCES ──
+    cur_cabin  = st.session_state.get("m_cabin", "Economy")
+    cur_hs     = st.session_state.get("m_hotel_style", "Standard")
+    cabin_disp = {"Prem. Eco": "Premium Economy"}.get(cur_cabin, cur_cabin)
+    if include_flight and include_hotel:
+        pref_preview = f"{cabin_disp} · {cur_hs}"
+    elif include_flight:
+        pref_preview = cabin_disp
+    else:
+        pref_preview = cur_hs
+
+    st.markdown(
+        f'<div class="mf-section">'
+        f'<div class="mf-header">'
+        f'<span class="mf-header-label">Preferences</span>'
+        f'<span class="mf-header-value">{pref_preview}</span>'
+        f'</div><div class="mf-body">',
+        unsafe_allow_html=True)
+
     if include_flight:
-        st.markdown(
-            '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
-            'letter-spacing:.05em;margin:.1rem 0 .4rem;">Cabin</p>',
-            unsafe_allow_html=True)
-        cabin = _seg_buttons(
-            ["Economy", "Prem. Eco", "Business", "First"],
-            "m_cabin", "m_cab", n_cols=4)
-        # Map short label back
-        cabin_map = {"Prem. Eco": "Premium Economy"}
-        cabin = cabin_map.get(cabin, cabin)
-        st.markdown('<div style="height:.75rem"></div>', unsafe_allow_html=True)
+        st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .35rem;">Cabin</p>',
+                    unsafe_allow_html=True)
+        cabin_raw = mf_seg(["Economy", "Prem. Eco", "Business", "First"],
+                           "m_cabin", "mf_cab", n_cols=4)
+        cabin = {"Prem. Eco": "Premium Economy"}.get(cabin_raw, cabin_raw)
+        st.markdown('<div style="height:.4rem"></div>', unsafe_allow_html=True)
     else:
         cabin = "Economy"
 
-    # ── Hotel style ──
     if include_hotel:
-        st.markdown(
-            '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
-            'letter-spacing:.05em;margin:.1rem 0 .4rem;">Hotel style</p>',
-            unsafe_allow_html=True)
-        hotel_style = _seg_buttons(
-            ["Budget", "Standard", "Luxury"],
-            "m_hotel_style", "m_hs", n_cols=3)
-        st.markdown('<div style="height:.75rem"></div>', unsafe_allow_html=True)
-
-        if include_flight and is_roundtrip:
-            hotel_nights = flight_nights
-        elif include_flight and not is_roundtrip:
-            hotel_nights = st.number_input(
-                "Nights", min_value=1, max_value=60, value=5,
-                key="m_hotel_nights_input")
-        else:
-            hotel_nights = flight_nights
+        st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .35rem;">Hotel style</p>',
+                    unsafe_allow_html=True)
+        hotel_style = mf_seg(["Budget", "Standard", "Luxury"],
+                              "m_hotel_style", "mf_hs", n_cols=3)
+        st.markdown('<div style="height:.4rem"></div>', unsafe_allow_html=True)
+        hotel_nights = flight_nights if (include_flight and is_roundtrip) else (
+            st.number_input("Nights", min_value=1, max_value=60, value=5,
+                            key="m_hotel_nights_input") if include_flight else flight_nights)
     else:
         hotel_style  = "Standard"
         hotel_nights = None
 
-    # ── Value vs experience ──
-    st.markdown(
-        '<p style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;'
-        'letter-spacing:.05em;margin:.1rem 0 .1rem;">Priority</p>',
-        unsafe_allow_html=True)
     pref_labels = {1: "Max value", 3: "Mostly value", 5: "Balanced",
                    7: "Mostly comfort", 10: "Max comfort"}
-    val_exp = st.slider(
-        "Priority", 1, 10,
-        st.session_state.get("m_val_exp", 5),
-        key="m_val_exp_slider",
-        label_visibility="collapsed")
+    st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .1rem;">Priority</p>',
+                unsafe_allow_html=True)
+    val_exp = st.slider("Priority", 1, 10,
+                        st.session_state.get("m_val_exp", 5),
+                        key="m_val_exp_slider", label_visibility="collapsed")
     st.session_state.m_val_exp = val_exp
-    # Show nearest label
     nearest = min(pref_labels, key=lambda x: abs(x - val_exp))
     st.markdown(
-        f'<p style="font-size:12px;color:#666;text-align:center;margin:-.25rem 0 .5rem;">'
-        f'{pref_labels[nearest]}</p>',
-        unsafe_allow_html=True)
+        f'<p style="font-size:11px;color:#888;text-align:center;margin:-.1rem 0 0;">' +
+        pref_labels[nearest] + '</p>', unsafe_allow_html=True)
+
+    st.markdown('</div></div>', unsafe_allow_html=True)
 
     # ── CTA ──
-    st.markdown('<div style="height:.25rem"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="height:.35rem"></div>', unsafe_allow_html=True)
     st.markdown('<div class="m-cta">', unsafe_allow_html=True)
     run = st.button("Find My Best Trip", type="primary",
                     use_container_width=True, key="m_run")
     st.markdown('</div>', unsafe_allow_html=True)
-
     st.markdown('</div>', unsafe_allow_html=True)  # /m-card
 
     # ── Build params ──
     if include_flight and is_roundtrip and return_date:
         dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
     elif include_flight:
-        dates_str = f"{depart_date.strftime('%b %d, %Y')} (one way)"
+        dates_str = depart_date.strftime('%b %d, %Y') + " (one way)"
     elif include_hotel:
-        dates_str = f"{depart_date.strftime('%b %d')} – {(depart_date + timedelta(days=hotel_nights)).strftime('%b %d, %Y')}"
+        dates_str = (f"{depart_date.strftime('%b %d')} – "
+                     f"{(depart_date + timedelta(days=hotel_nights)).strftime('%b %d, %Y')}")
     else:
         dates_str = ""
     nights = hotel_nights if hotel_nights else (flight_nights or 0)
@@ -2244,6 +2302,7 @@ def page_trip_mobile():
                 st.error(f"Service error: {e}")
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
+
 
 
 def page_trip():
