@@ -136,6 +136,123 @@ st.markdown("""
         min-width:100% !important;
     }
 }
+
+/* ════════════════════════════════════════
+   SEARCH CARD — Expedia/Google Flights style
+   Strip widget chrome, make rows feel tappable
+   ════════════════════════════════════════ */
+
+/* Outer card wrapper */
+.search-card-wrap {
+    border: 0.5px solid #e0e0e0;
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    background: #fff;
+}
+
+/* Each field row inside the card */
+.search-field-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    min-height: 56px;
+    border-bottom: 0.5px solid #f0f0f0;
+    cursor: pointer;
+}
+.search-field-row:last-child { border-bottom: none; }
+.sfi { font-size: 18px; color: #999; flex-shrink: 0; width: 22px; }
+.sfb { flex: 1; min-width: 0; }
+.sfl { font-size: 10px; color: #aaa; margin-bottom: 1px; text-transform: uppercase; letter-spacing: .04em; }
+.sfv { font-size: 14px; font-weight: 500; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sfc { font-size: 16px; color: #ccc; flex-shrink: 0; }
+
+/* Scope pills — styled like top toggle */
+.scope-pills { display: flex; gap: 0; border: 0.5px solid #e0e0e0; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.scope-pill { flex: 1; padding: 9px 0; text-align: center; font-size: 13px; font-weight: 500; color: #666; cursor: pointer; border-right: 0.5px solid #e0e0e0; background: #fff; }
+.scope-pill:last-child { border-right: none; }
+.scope-pill.active { background: #111; color: #fff; }
+
+/* Trip type pills */
+.tt-pills { display: flex; gap: 8px; margin-bottom: 10px; }
+.tt-pill { flex: 1; padding: 7px 0; text-align: center; font-size: 12px; border-radius: 8px; border: 0.5px solid #e0e0e0; color: #555; background: #fff; cursor: pointer; }
+.tt-pill.active { background: #e8f0fe; color: #1a56cc; border-color: #b8d0f8; font-weight: 500; }
+
+/* Strip Streamlit widget labels inside the search card */
+.search-card-inner [data-testid="stSelectbox"] label,
+.search-card-inner [data-testid="stDateInput"] label,
+.search-card-inner [data-testid="stNumberInput"] label,
+.search-card-inner [data-testid="stSlider"] label { display: none !important; }
+
+/* Compress widget internal padding */
+.search-card-inner [data-testid="stSelectbox"] > div,
+.search-card-inner [data-testid="stDateInput"] > div { margin: 0 !important; padding: 0 !important; }
+
+/* Make selectbox fill the row */
+.search-card-inner [data-testid="stSelectbox"] { margin-bottom: 0 !important; }
+
+/* Global: on mobile compress the metric strip */
+@media (max-width: 600px) {
+    [data-testid="stMetric"] { padding: 6px 8px !important; }
+    [data-testid="stMetricValue"] { font-size: 1.1rem !important; }
+    [data-testid="stMetricLabel"] { font-size: 11px !important; }
+}
+
+/* ── Mobile: compress all widget vertical padding ── */
+@media (max-width: 768px) {
+    /* Reduce top padding on page */
+    .block-container { padding-top: 0.5rem !important; }
+
+    /* Compress selectbox height */
+    [data-testid="stSelectbox"] { margin-bottom: 6px !important; }
+    [data-testid="stSelectbox"] > div > div { min-height: 36px !important; }
+
+    /* Compress date inputs */
+    [data-testid="stDateInput"] { margin-bottom: 6px !important; }
+    [data-testid="stDateInput"] > div { min-height: 36px !important; }
+
+    /* Compress radio buttons */
+    [data-testid="stRadio"] { margin-bottom: 6px !important; }
+    [data-testid="stRadio"] > div { gap: 4px !important; }
+
+    /* Compress slider */
+    [data-testid="stSlider"] { margin-bottom: 6px !important; padding: 0 !important; }
+
+    /* Compress number input */
+    [data-testid="stNumberInput"] { margin-bottom: 6px !important; }
+
+    /* Tighten column gaps */
+    [data-testid="stHorizontalBlock"] { gap: 8px !important; }
+
+    /* Widget labels smaller */
+    .search-card-inner label { font-size: 12px !important; margin-bottom: 2px !important; }
+
+    /* Make radio look like pill tabs */
+    [data-testid="stRadio"] label {
+        padding: 6px 12px !important;
+        border-radius: 20px !important;
+        border: 0.5px solid #e0e0e0 !important;
+        font-size: 12px !important;
+    }
+
+    /* Search button — tall and prominent */
+    [data-testid="baseButton-primary"] {
+        min-height: 52px !important;
+        font-size: 16px !important;
+        border-radius: 12px !important;
+        margin-top: 4px !important;
+    }
+
+    /* Nav buttons — compact */
+    [data-testid="baseButton-secondary"] {
+        min-height: 36px !important;
+        font-size: 13px !important;
+    }
+
+    /* Caption text smaller */
+    [data-testid="stCaptionContainer"] { font-size: 11px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -499,130 +616,128 @@ def page_trip():
     st.markdown("---")
 
     # ════════════════════════════════════════
-    #  TRIP INPUTS — all in main panel
+    #  SEARCH CARD — compact, Expedia-style
     # ════════════════════════════════════════
 
-    # ── Scope ──
+    # ── Scope toggle (pill row) ──
     search_scope = st.radio(
-        "What are you planning?",
+        "Planning",
         ["Flight + Hotel", "Flight only", "Hotel only"],
-        horizontal=True, key="search_scope")
+        horizontal=True, key="search_scope",
+        label_visibility="collapsed")
     include_flight = search_scope in ["Flight + Hotel", "Flight only"]
     include_hotel  = search_scope in ["Flight + Hotel", "Hotel only"]
 
-    st.markdown("---")
-
-    # ── Flight inputs ──
+    # ── Default values ──
     origin_city = origin_code = dest_city = dest_code = ""
     cabin = "Economy"
-    depart_date = date.today()
-    return_date = None
+    depart_date   = date(2026, 6, 10)
+    return_date   = None
     flight_nights = None
-    is_roundtrip = False
+    is_roundtrip  = True
+    hotel_style   = "Standard"
+    hotel_nights  = None
+
+    # ── Search card ──
+    st.markdown('<div class="search-card-inner">', unsafe_allow_html=True)
 
     if include_flight:
-        st.markdown("**Flight**")
-
-        trip_type = st.radio("Trip type", ["Round trip", "One way"],
-                             horizontal=True, key="trip_type")
+        # Trip type
+        tt_cols = st.columns(2)
+        with tt_cols[0]:
+            trip_type = st.radio("Trip type", ["Round trip", "One way"],
+                                 horizontal=False, key="trip_type",
+                                 label_visibility="collapsed")
         is_roundtrip = trip_type == "Round trip"
 
-        fc1, fc2 = st.columns(2)
-        with fc1:
+        # Route — two compact selects side by side
+        rc1, rc2 = st.columns(2)
+        with rc1:
             origin_label = st.selectbox(
-                "Flying from", AIRPORT_LABELS,
+                "✈ From", AIRPORT_LABELS,
                 index=AIRPORT_LABELS.index("San Francisco, CA — SFO (SFO)"),
                 key="origin_sel")
             origin_code = AIRPORTS[origin_label]
             origin_city = origin_label.split(" —")[0]
-            st.caption(f"Airport: **{origin_code}**")
-        with fc2:
+        with rc2:
             dest_label = st.selectbox(
-                "Flying to", AIRPORT_LABELS,
+                "✈ To", AIRPORT_LABELS,
                 index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
                 key="dest_sel")
             dest_code = AIRPORTS[dest_label]
             dest_city = dest_label.split(" —")[0]
-            st.caption(f"Airport: **{dest_code}**")
 
-        cabin = st.selectbox("Cabin class",
-                             ["Economy", "Premium Economy", "Business", "First"],
-                             key="cabin_sel")
-
+        # Dates — side by side calendar pickers
         if is_roundtrip:
             dc1, dc2 = st.columns(2)
             with dc1:
                 depart_date = st.date_input(
-                    "Departure date", value=date(2026, 6, 10),
+                    "📅 Depart", value=date(2026, 6, 10),
                     min_value=date.today(), key="depart_date")
             with dc2:
                 return_date = st.date_input(
-                    "Return date",
+                    "📅 Return",
                     value=date(2026, 6, 10) + timedelta(days=10),
                     min_value=depart_date + timedelta(days=1),
                     key="return_date")
             flight_nights = (return_date - depart_date).days
-            st.caption(f"{flight_nights} nights away")
         else:
             depart_date = st.date_input(
-                "Departure date", value=date(2026, 6, 10),
+                "📅 Departure date", value=date(2026, 6, 10),
                 min_value=date.today(), key="depart_date_ow")
 
-    # ── Hotel inputs ──
-    hotel_style  = "Standard"
-    hotel_nights = None
+        cabin = st.selectbox(
+            "💺 Cabin class",
+            ["Economy", "Premium Economy", "Business", "First"],
+            key="cabin_sel")
 
     if include_hotel:
-        if include_flight:
-            st.markdown("---")
-        st.markdown("**Hotel**")
-
         if not include_flight:
             dest_label = st.selectbox(
-                "Destination city", AIRPORT_LABELS,
+                "🏙 Destination", AIRPORT_LABELS,
                 index=AIRPORT_LABELS.index("Tokyo — Narita (NRT)"),
                 key="hotel_dest_sel")
             dest_city = dest_label.split(" —")[0]
             dest_code = AIRPORTS[dest_label]
 
-        hotel_style = st.selectbox("Hotel style",
-                                   ["Budget", "Standard", "Luxury"],
-                                   key="hotel_style_sel")
-
-        if include_flight and is_roundtrip and flight_nights:
-            hotel_nights = flight_nights
-            st.caption(f"Staying **{hotel_nights} nights** — matches your flight dates")
-        elif include_flight and not is_roundtrip:
-            hotel_nights = st.number_input(
-                "Nights", min_value=1, max_value=60, value=5,
-                key="hotel_nights_input")
-        else:
             hc1, hc2 = st.columns(2)
             with hc1:
                 checkin_date = st.date_input(
-                    "Check-in", value=date(2026, 6, 10),
+                    "📅 Check-in", value=date(2026, 6, 10),
                     min_value=date.today(), key="checkin_date")
             with hc2:
                 checkout_date = st.date_input(
-                    "Check-out",
+                    "📅 Check-out",
                     value=date(2026, 6, 10) + timedelta(days=5),
                     min_value=checkin_date + timedelta(days=1),
                     key="checkout_date")
             hotel_nights = (checkout_date - checkin_date).days
             depart_date  = checkin_date
-            st.caption(f"{hotel_nights} nights")
+        elif is_roundtrip and flight_nights:
+            hotel_nights = flight_nights
+            st.caption(f"🏨 {hotel_nights} hotel nights — matches your flight")
+        else:
+            hotel_nights = st.number_input(
+                "🏨 Hotel nights", min_value=1, max_value=60, value=5,
+                key="hotel_nights_input")
 
-    # ── Preferences ──
-    st.markdown("---")
-    val_exp = st.slider("Value  ←  ·  →  Experience", 1, 10, 5,
-                        help="1 = max points value  ·  10 = max experience quality")
+        hotel_style = st.selectbox(
+            "⭐ Hotel style", ["Budget", "Standard", "Luxury"],
+            key="hotel_style_sel")
 
-    # ── Search button ──
-    st.markdown("<br>", unsafe_allow_html=True)
-    run = st.button("Find My Best Trip", type="primary",
+    # Priority slider — compact
+    val_exp = st.slider(
+        "Value ←——→ Experience", 1, 10, 5,
+        help="1 = max points value  ·  10 = max experience quality",
+        key="val_exp_slider")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Big search button ──
+    run = st.button("🔍  Find My Best Trip", type="primary",
                     use_container_width=True, key="run_btn")
 
-    # ── Date summary string ──
+    # ── Date summary string for prompt ──
     if include_flight and is_roundtrip and return_date:
         dates_str = f"{depart_date.strftime('%b %d')} – {return_date.strftime('%b %d, %Y')}"
     elif include_flight:
@@ -638,7 +753,7 @@ def page_trip():
     st.markdown("---")
 
     if not run:
-        st.info("Set your trip details above and tap **Find My Best Trip**.")
+        st.caption("Configure your trip above and tap **Find My Best Trip**.")
         return
 
 
