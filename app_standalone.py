@@ -151,8 +151,8 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
-/* Hide scope tile trigger buttons — JS clicks them, user never sees them */
-div[data-scope-btns] {
+/* Hide scope tile trigger buttons */
+div.st-tile-btn-hide {
     position: absolute !important;
     opacity: 0 !important;
     pointer-events: none !important;
@@ -1702,20 +1702,13 @@ def page_trip():
              '<div class="st-icons"><i class="ti ti-building"></i></div>'),
         ]
 
-        # Build tile HTML — onclick updates visual immediately then triggers hidden button
         tiles = ""
         for label, icon_html in TILES:
             active_cls = " active" if label == current else ""
+            # JS: update visual instantly, then find+click the matching hidden button
             tiles += (
-                f'<div class="st-tile{active_cls}" data-label="{label}" '
-                f'onclick="(function(t){{'
-                f'document.querySelectorAll(\'.st-tile\').forEach(function(x){{x.classList.remove(\'active\');}});'
-                f't.classList.add(\'active\');'
-                f'var lbl=t.getAttribute(\'data-label\');'
-                f'var wrap=document.querySelector(\'[data-scope-btns]\');'
-                f'if(!wrap)return;'
-                f'wrap.querySelectorAll(\'button\').forEach(function(b){{if(b.innerText.trim()===lbl)b.click();}});'
-                f'}})(this)">'
+                f'<div class="st-tile{active_cls}" data-lbl="{label}" '
+                f'onclick="stTileClick(this)">'
                 f'{icon_html}'
                 f'<div class="st-label">{label}</div>'
                 f'</div>'
@@ -1738,12 +1731,41 @@ def page_trip():
             '.st-label{font-size:11.5px;font-weight:600;color:#333;text-align:center;'
             'line-height:1.2;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;}'
             '</style>'
+            '<script>'
+            'function stTileClick(t){'
+            '  document.querySelectorAll(".st-tile").forEach(function(x){x.classList.remove("active");});'
+            '  t.classList.add("active");'
+            '  var lbl=t.getAttribute("data-lbl");'
+            '  document.querySelectorAll("button").forEach(function(b){'
+            '    if(b.getAttribute("data-testid")==="baseButton-secondary"||'
+            '       b.getAttribute("data-testid")==="baseButton-primary"){'
+            '      if(b.innerText.trim()===lbl){b.click();}'
+            '    }'
+            '  });'
+            '}'
+            '</script>'
             f'<div class="st-tiles">{tiles}</div>'
         )
         st.markdown(html, unsafe_allow_html=True)
 
-        # Hidden st.buttons — CSS collapses them; JS clicks them on tile tap
-        st.markdown('<div data-scope-btns="1">', unsafe_allow_html=True)
+        # Inject CSS that hides the three trigger buttons by their exact label text
+        # Uses :has(p) selector targeting Streamlit's button label element
+        st.markdown("""
+<style>
+button[kind="secondary"]:has(div:first-child > p),
+button[kind="primary"]:has(div:first-child > p) { display: initial; }
+
+[data-testid="stBaseButton-secondary"] p,
+[data-testid="stBaseButton-primary"] p { font-size: inherit; }
+
+/* Hide tile trigger buttons specifically by matching their parent stButton wrapper */
+div.st-tile-btn-hide { height: 0 !important; overflow: hidden !important;
+    position: absolute !important; opacity: 0 !important;
+    pointer-events: none !important; clip: rect(0,0,0,0) !important; }
+</style>
+""", unsafe_allow_html=True)
+
+        st.markdown('<div class="st-tile-btn-hide">', unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3)
         with c1:
             if st.button("Flight + Hotel", key="tile_fh"):
