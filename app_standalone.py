@@ -151,8 +151,50 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
 .mock-banner { background:#fff3e0; border:1px solid #ffcc80; border-radius:8px;
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
-/* Seg button rows — force single row, never stack, on any screen width.
-   Target every possible Streamlit column container variant. */
+/* ── Scope icon tiles ── */
+.scope-tiles {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    padding: 2px 0 4px;
+}
+.scope-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 8px 14px;
+    border-radius: 14px;
+    border: 2px solid #e8e8e8;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, color .15s;
+    color: #888;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.scope-tile:hover { border-color: #bbb; color: #555; }
+.scope-tile.active {
+    border-color: #111;
+    background: #111;
+    color: #fff;
+}
+.scope-tile-icon { line-height: 0; }
+.scope-tile-icon svg { display: block; }
+.scope-tile-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.2;
+    letter-spacing: .01em;
+}
+
+/* ── Hidden radio (used by scope tiles + other seg controls) ── */
+.seg-hidden-radio { position:absolute; opacity:0; pointer-events:none;
+    width:0; height:0; overflow:hidden; }
+
+/* Seg button rows — force single row, never stack */
 .m-seg > div, .mf-seg > div {
     display: flex !important;
     flex-direction: row !important;
@@ -166,9 +208,7 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
     width: 0 !important;
     padding: 0 !important;
 }
-.m-seg > div > div > div, .mf-seg > div > div > div {
-    width: 100% !important;
-}
+.m-seg > div > div > div, .mf-seg > div > div > div { width: 100% !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1669,17 +1709,103 @@ def page_trip():
 
     def seg(options, state_key, key_prefix, n_cols=None):
         current = st.session_state.get(state_key, options[0])
-        n = n_cols or len(options)
+        radio_key = f"{key_prefix}_radio"
+        idx = options.index(current) if current in options else 0
         st.markdown('<div class="mf-seg">', unsafe_allow_html=True)
-        cols = st.columns(n)
+        cols = st.columns(len(options) if n_cols is None else n_cols)
         for i, opt in enumerate(options):
-            with cols[i % n]:
+            with cols[i % len(cols)]:
                 if st.button(opt, key=f"{key_prefix}_{i}", use_container_width=True,
                              type="primary" if opt == current else "secondary"):
                     st.session_state[state_key] = opt
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         return st.session_state.get(state_key, options[0])
+
+    def scope_tiles():
+        """Icon tile selector for Flight+Hotel / Flight / Hotel."""
+        current = st.session_state.get("t_scope", "Flight + Hotel")
+
+        ICONS = {
+            "Flight + Hotel": """<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
+  <!-- Plane -->
+  <path d="M8 28l5-2 6 6 14-16-2-2-13 10-5-1-3 3 4 4-6 2v-4z" fill="currentColor" opacity=".15"/>
+  <path d="M6 30.5l4.5-1.8L17 35l15-17.5-1.5-1.5L17 26.5l-5-1L9 29l4 4-7 2.5v-5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
+  <line x1="6" y1="40" x2="30" y2="40" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  <!-- Hotel building -->
+  <rect x="28" y="22" width="14" height="16" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+  <rect x="31" y="26" width="3" height="3" rx=".5" fill="currentColor" opacity=".5"/>
+  <rect x="36" y="26" width="3" height="3" rx=".5" fill="currentColor" opacity=".5"/>
+  <rect x="31" y="31" width="3" height="3" rx=".5" fill="currentColor" opacity=".5"/>
+  <rect x="36" y="31" width="3" height="3" rx=".5" fill="currentColor" opacity=".5"/>
+  <rect x="33" y="35" width="4" height="3" rx=".5" fill="currentColor" opacity=".5"/>
+  <path d="M28 22l7-5 7 5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
+</svg>""",
+            "Flight": """<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
+  <path d="M6 32l6-2.5 7.5 7.5 17-20-2-2-15.5 12-6-1.5-3.5 3.5 5 5-8.5 3V32z" fill="currentColor" opacity=".12"/>
+  <path d="M5 33.5l5.5-2 7.5 7.5 18-20.5-2-2L18.5 28.5l-6-1.5L9 31l5 5L5 39v-5.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>
+  <line x1="5" y1="43" x2="32" y2="43" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+</svg>""",
+            "Hotel": """<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
+  <rect x="8" y="20" width="32" height="24" rx="2" fill="currentColor" opacity=".1"/>
+  <rect x="8" y="20" width="32" height="24" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+  <rect x="13" y="26" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
+  <rect x="21.5" y="26" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
+  <rect x="30" y="26" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
+  <rect x="13" y="33" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
+  <rect x="30" y="33" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
+  <rect x="19" y="33" width="10" height="11" rx="1" fill="currentColor" opacity=".4"/>
+  <path d="M8 20l16-12 16 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>
+  <line x1="4" y1="20" x2="44" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+</svg>""",
+        }
+
+        tiles_html = '<div class="scope-tiles">'
+        for opt, svg in ICONS.items():
+            active = opt == current
+            tiles_html += (
+                f'<div class="scope-tile{" active" if active else ""}" '
+                f'data-val="{opt}">'
+                f'<div class="scope-tile-icon">{svg}</div>'
+                f'<div class="scope-tile-label">{opt}</div>'
+                f'</div>'
+            )
+        tiles_html += '</div>'
+        st.markdown(tiles_html, unsafe_allow_html=True)
+
+        # Hidden radio — JS clicks it, Python reads it on rerun
+        st.markdown('<div class="seg-hidden-radio">', unsafe_allow_html=True)
+        options = list(ICONS.keys())
+        idx = options.index(current) if current in options else 0
+        selected = st.radio("scope", options, index=idx,
+                            key="t_scope_radio", label_visibility="collapsed",
+                            horizontal=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown("""
+<script>
+(function(){
+    var tiles = document.querySelectorAll('.scope-tile');
+    tiles.forEach(function(tile){
+        tile.addEventListener('click', function(){
+            tiles.forEach(function(t){ t.classList.remove('active'); });
+            tile.classList.add('active');
+            var val = tile.getAttribute('data-val');
+            var labels = document.querySelectorAll('.seg-hidden-radio [data-testid="stRadio"] label');
+            labels.forEach(function(lbl){
+                if(lbl.innerText.trim() === val) lbl.click();
+            });
+        });
+    });
+})();
+</script>
+""", unsafe_allow_html=True)
+
+        if selected != current:
+            st.session_state["t_scope"] = selected
+            st.rerun()
+
+        return st.session_state.get("t_scope", "Flight + Hotel")
 
     def mf_open(label, value=""):
         val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
@@ -1694,7 +1820,7 @@ def page_trip():
     # ── Optimize for ──
     cur_scope = st.session_state.get("t_scope", "Flight + Hotel")
     mf_open("Optimize for", cur_scope)
-    raw_scope = seg(["Flight + Hotel", "Flight", "Hotel"], "t_scope", "ts", n_cols=3)
+    raw_scope = scope_tiles()
     mf_close()
     scope_map    = {"Flight": "Flight only", "Hotel": "Hotel only"}
     search_scope = scope_map.get(raw_scope, raw_scope)
