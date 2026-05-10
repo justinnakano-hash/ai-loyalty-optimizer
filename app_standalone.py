@@ -152,47 +152,48 @@ body.is-mobile .mobile-hide-title h1 { display:none !important; }
     padding:.6rem 1rem; font-size:13px; color:#e65100; margin-bottom:1rem; }
 
 /* ── Scope icon tiles ── */
-.scope-tiles {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px;
-    padding: 2px 0 4px;
-}
-.scope-tile {
+/* Each tile = a .scope-tile-wrap div (icon) + st.button below it in the same column.
+   CSS pulls the button up to sit flush under the icon div, making them one unit. */
+.scope-tile-wrap {
+    background: #fff;
+    border: 2px solid #e8e8e8;
+    border-bottom: none;
+    border-radius: 14px 14px 0 0;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 16px 8px 14px;
-    border-radius: 14px;
-    border: 2px solid #e8e8e8;
-    background: #fff;
-    cursor: pointer;
-    transition: border-color .15s, background .15s, color .15s;
-    color: #888;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
+    padding: 18px 8px 10px;
+    margin-bottom: 0;
+    transition: border-color .15s, background .15s;
 }
-.scope-tile:hover { border-color: #bbb; color: #555; }
-.scope-tile.active {
-    border-color: #111;
+.scope-tile-wrap.active {
     background: #111;
-    color: #fff;
+    border-color: #111;
+}
+.scope-tile-wrap + div button {
+    border-radius: 0 0 14px 14px !important;
+    border-top: none !important;
+    margin-top: -1px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    min-height: 38px !important;
+    padding-top: 6px !important;
+    padding-bottom: 10px !important;
+}
+/* Active tile button */
+.scope-tile-wrap.active + div button {
+    background: #111 !important;
+    color: #fff !important;
+    border-color: #111 !important;
+}
+/* Inactive tile button */
+.scope-tile-wrap:not(.active) + div button {
+    background: #fff !important;
+    color: #555 !important;
+    border-color: #e8e8e8 !important;
 }
 .scope-tile-icon { line-height: 0; }
-.scope-tile-icon svg { display: block; }
-.scope-tile-label {
-    font-size: 11.5px;
-    font-weight: 600;
-    text-align: center;
-    line-height: 1.2;
-    letter-spacing: .01em;
-}
-
-/* ── Hidden radio (used by scope tiles + other seg controls) ── */
-.seg-hidden-radio { position:absolute; opacity:0; pointer-events:none;
-    width:0; height:0; overflow:hidden; }
+.scope-tile-icon svg { display: block; width: 38px; height: 38px; }
 
 /* Seg button rows — force single row, never stack */
 .m-seg > div, .mf-seg > div {
@@ -1723,87 +1724,67 @@ def page_trip():
         return st.session_state.get(state_key, options[0])
 
     def scope_tiles():
-        """Icon tile selector for Flight+Hotel / Flight / Hotel."""
+        """Three icon tiles as st.button calls. Selected = primary, others = secondary.
+        CSS transforms Streamlit buttons into styled square tiles with SVG icons."""
         current = st.session_state.get("t_scope", "Flight + Hotel")
 
-        ICONS = {
-            "Flight + Hotel": """<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
-  <!-- Plane -->
-  <path d="M8 28l5-2 6 6 14-16-2-2-13 10-5-1-3 3 4 4-6 2v-4z" fill="currentColor" opacity=".15"/>
-  <path d="M6 30.5l4.5-1.8L17 35l15-17.5-1.5-1.5L17 26.5l-5-1L9 29l4 4-7 2.5v-5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
-  <line x1="6" y1="40" x2="30" y2="40" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-  <!-- Hotel building -->
-  <rect x="28" y="22" width="14" height="16" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
-  <rect x="31" y="26" width="3" height="3" rx=".5" fill="currentColor" opacity=".5"/>
-  <rect x="36" y="26" width="3" height="3" rx=".5" fill="currentColor" opacity=".5"/>
-  <rect x="31" y="31" width="3" height="3" rx=".5" fill="currentColor" opacity=".5"/>
-  <rect x="36" y="31" width="3" height="3" rx=".5" fill="currentColor" opacity=".5"/>
-  <rect x="33" y="35" width="4" height="3" rx=".5" fill="currentColor" opacity=".5"/>
-  <path d="M28 22l7-5 7 5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
-</svg>""",
-            "Flight": """<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
-  <path d="M6 32l6-2.5 7.5 7.5 17-20-2-2-15.5 12-6-1.5-3.5 3.5 5 5-8.5 3V32z" fill="currentColor" opacity=".12"/>
-  <path d="M5 33.5l5.5-2 7.5 7.5 18-20.5-2-2L18.5 28.5l-6-1.5L9 31l5 5L5 39v-5.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>
-  <line x1="5" y1="43" x2="32" y2="43" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-</svg>""",
-            "Hotel": """<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
-  <rect x="8" y="20" width="32" height="24" rx="2" fill="currentColor" opacity=".1"/>
-  <rect x="8" y="20" width="32" height="24" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
-  <rect x="13" y="26" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
-  <rect x="21.5" y="26" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
-  <rect x="30" y="26" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
-  <rect x="13" y="33" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
-  <rect x="30" y="33" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/>
-  <rect x="19" y="33" width="10" height="11" rx="1" fill="currentColor" opacity=".4"/>
-  <path d="M8 20l16-12 16 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>
-  <line x1="4" y1="20" x2="44" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-</svg>""",
-        }
+        TILE_DATA = [
+            ("Flight + Hotel", "tile_fh", """<svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M4 27l4.5-1.5 6.5 6.5 13-15-1.5-1.5-12 9.5-4.5-1L7 28l4 4-7 2.5V27z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+  <line x1="4" y1="37" x2="26" y2="37" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  <rect x="27" y="20" width="13" height="15" rx="1.5" stroke="currentColor" stroke-width="1.8"/>
+  <rect x="29.5" y="24" width="3" height="3" rx=".4" fill="currentColor" opacity=".6"/>
+  <rect x="34.5" y="24" width="3" height="3" rx=".4" fill="currentColor" opacity=".6"/>
+  <rect x="29.5" y="29" width="3" height="3" rx=".4" fill="currentColor" opacity=".6"/>
+  <rect x="34.5" y="29" width="3" height="3" rx=".4" fill="currentColor" opacity=".6"/>
+  <path d="M27 20l6.5-5 6.5 5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+</svg>"""),
+            ("Flight", "tile_fl", """<svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M4 29l5-2 7 7 16-18.5-1.8-1.8-14.5 11.5-5.5-1.5L7 28l4.5 4.5L4 35V29z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+  <line x1="4" y1="39" x2="30" y2="39" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+</svg>"""),
+            ("Hotel", "tile_ht", """<svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="6" y="19" width="32" height="22" rx="1.5" stroke="currentColor" stroke-width="1.8"/>
+  <rect x="11" y="24" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
+  <rect x="19.5" y="24" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
+  <rect x="28" y="24" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
+  <rect x="11" y="31" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
+  <rect x="28" y="31" width="5" height="5" rx=".8" fill="currentColor" opacity=".6"/>
+  <rect x="18" y="31" width="8" height="10" rx=".8" fill="currentColor" opacity=".4"/>
+  <path d="M6 19L22 8l16 11" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+</svg>"""),
+        ]
 
-        tiles_html = '<div class="scope-tiles">'
-        for opt, svg in ICONS.items():
-            active = opt == current
-            tiles_html += (
-                f'<div class="scope-tile{" active" if active else ""}" '
-                f'data-val="{opt}">'
-                f'<div class="scope-tile-icon">{svg}</div>'
-                f'<div class="scope-tile-label">{opt}</div>'
-                f'</div>'
-            )
-        tiles_html += '</div>'
-        st.markdown(tiles_html, unsafe_allow_html=True)
+        # Inject SVGs as CSS background via data URIs is unreliable — instead
+        # place each SVG as a data attribute on the column wrapper and let CSS
+        # use the button's :before. Actually simplest: render SVG as markdown
+        # ABOVE the button column, then overlap with CSS.
+        #
+        # Cleanest approach that works in Streamlit: render the whole tile
+        # (icon + label + selected state) as a styled st.button by injecting
+        # the SVG into the button label via HTML — Streamlit renders button
+        # labels as plain text, so use a sibling markdown + CSS to position it.
+        #
+        # Real approach: 3 columns, each column has an st.button.
+        # CSS targets .scope-tile-wrap to stack an SVG image above the button.
 
-        # Hidden radio — JS clicks it, Python reads it on rerun
-        st.markdown('<div class="seg-hidden-radio">', unsafe_allow_html=True)
-        options = list(ICONS.keys())
-        idx = options.index(current) if current in options else 0
-        selected = st.radio("scope", options, index=idx,
-                            key="t_scope_radio", label_visibility="collapsed",
-                            horizontal=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown("""
-<script>
-(function(){
-    var tiles = document.querySelectorAll('.scope-tile');
-    tiles.forEach(function(tile){
-        tile.addEventListener('click', function(){
-            tiles.forEach(function(t){ t.classList.remove('active'); });
-            tile.classList.add('active');
-            var val = tile.getAttribute('data-val');
-            var labels = document.querySelectorAll('.seg-hidden-radio [data-testid="stRadio"] label');
-            labels.forEach(function(lbl){
-                if(lbl.innerText.trim() === val) lbl.click();
-            });
-        });
-    });
-})();
-</script>
-""", unsafe_allow_html=True)
-
-        if selected != current:
-            st.session_state["t_scope"] = selected
-            st.rerun()
+        cols = st.columns(3)
+        for i, (label, btn_key, svg) in enumerate(TILE_DATA):
+            with cols[i]:
+                is_active = label == current
+                # SVG rendered above button in same column
+                color = "#ffffff" if is_active else "#555555"
+                colored_svg = svg.replace('stroke="currentColor"', f'stroke="{color}"') \
+                                  .replace('fill="currentColor"', f'fill="{color}"')
+                st.markdown(
+                    f'<div class="scope-tile-wrap{" active" if is_active else ""}">'
+                    f'<div class="scope-tile-icon">{colored_svg}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+                if st.button(label, key=btn_key, use_container_width=True,
+                             type="primary" if is_active else "secondary"):
+                    st.session_state["t_scope"] = label
+                    st.rerun()
 
         return st.session_state.get("t_scope", "Flight + Hotel")
 
