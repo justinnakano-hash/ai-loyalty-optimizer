@@ -851,25 +851,9 @@ div.m-cta button:active { transform: scale(.99); }
     .m-hide-on-mobile { display: block; }
 }
 
-/* ════════════════════════════════════════════════════════════════
-   COMPONENT IFRAMES — clickable_images, etc.
-   Streamlit 1.29+ injects a forced white iframe body background we can't
-   reach via CSS. Workaround: set iframe to the canvas color so it blends.
-   ════════════════════════════════════════════════════════════════ */
-iframe {
-    background: var(--canvas) !important;
-    color-scheme: normal !important;
-}
-[data-testid="stIFrame"],
-[data-testid="stCustomComponentV1"] {
-    background: var(--canvas) !important;
-    color-scheme: normal !important;
-}
-[data-testid="element-container"]:has(iframe),
-[data-testid="stElementContainer"]:has(iframe),
-.element-container:has(iframe) {
-    background: transparent !important;
-}
+/* Hidden iframes from cookie-manager etc. — keep them out of layout */
+iframe[height="0"], iframe[height="1"] { display: none !important; }
+
 /* Allow Edit/Remove buttons to shrink their padding when columns are narrow */
 .stButton button {
     overflow: hidden !important;
@@ -2207,74 +2191,13 @@ def page_trip():
 
     def scope_tiles():
         """
-        Three icon tiles using st-clickable-images. The images ARE the buttons —
-        no hidden Streamlit buttons, no CSS overlay tricks. Click returns the
-        clicked image index, which we map back to the scope value.
+        Three icon tiles rendered via st.html (directly in the parent DOM —
+        NO iframe, so no Streamlit-1.29+ white-background bug to fight).
+        Clicks are bridged to Python by invoking hidden st.button.click()
+        from JS. The hidden button row is collapsed via CSS.
         """
-        from st_clickable_images import clickable_images
-
-        current = st.session_state.get("t_scope", "Flight + Hotel")
         OPTIONS = ["Flight + Hotel", "Flight", "Hotel"]
-
-        # Build inline SVG data-URIs for each tile state (active vs inactive)
-        # Each SVG is a 220x110 tile with the icon and label baked in
-        def make_tile_svg(label, is_active):
-            bg     = "#111111" if is_active else "#ffffff"
-            border = "#111111" if is_active else "#e0e0e0"
-            fg     = "#ffffff" if is_active else "#333333"
-            ic_fg  = "#ffffff" if is_active else "#555555"
-
-            # Tabler-style icon paths (24x24 viewBox)
-            PLANE_PATH = ('M16 10h4a2 2 0 0 1 0 4h-4l-4 7h-3l2-7h-4l-2 2H3l1-4'
-                          ' l-1-4h2l2 2h4l-2-7h3z')
-            BUILDING_PATH = ('M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01'
-                             'M9 15v.01M9 18v.01')
-
-            # ViewBox 180x140 — near-square so icons stay proportionally large at any size
-            if label == "Flight + Hotel":
-                # Two icons side by side, scaled up
-                icons = (
-                    f'<g transform="translate(40 30) scale(1.8)">'
-                    f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
-                    f'</g>'
-                    f'<g transform="translate(100 30) scale(1.8)">'
-                    f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
-                    f'</g>'
-                )
-            elif label == "Flight":
-                icons = (
-                    f'<g transform="translate(60 22) scale(2.6)">'
-                    f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
-                    f'</g>'
-                )
-            else:  # Hotel
-                icons = (
-                    f'<g transform="translate(60 22) scale(2.6)">'
-                    f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
-                    f'</g>'
-                )
-
-            svg = (
-                f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 140" '
-                f'width="180" height="140">'
-                f'<rect x="2" y="2" width="176" height="136" rx="14" '
-                f'fill="{bg}" stroke="{border}" stroke-width="2"/>'
-                f'{icons}'
-                f'<text x="90" y="120" text-anchor="middle" '
-                f'font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" '
-                f'font-size="14" font-weight="600" fill="{fg}">{label}</text>'
-                f'</svg>'
-            )
-            import base64
-            b64 = base64.b64encode(svg.encode()).decode()
-            return f"data:image/svg+xml;base64,{b64}"
-
-        images = [make_tile_svg(label, label == current) for label in OPTIONS]
-        titles = OPTIONS
+        current = st.session_state.get("t_scope", OPTIONS[0])
 
         # Detect mobile via User-Agent so we can size tiles appropriately
         try:
@@ -2283,54 +2206,124 @@ def page_trip():
         except Exception:
             tile_is_mobile = False
 
+        # Inline SVG per tile (rendered straight into parent DOM, no base64)
+        def tile_svg(label, is_active):
+            bg     = "#0A0A0B" if is_active else "#FFFFFF"
+            border = "#0A0A0B" if is_active else "#E5E5E0"
+            fg     = "#FFFFFF" if is_active else "#0A0A0B"
+            ic_fg  = "#FFFFFF" if is_active else "#52525B"
+
+            PLANE_PATH = ('M16 10h4a2 2 0 0 1 0 4h-4l-4 7h-3l2-7h-4l-2 2H3l1-4'
+                          ' l-1-4h2l2 2h4l-2-7h3z')
+            BUILDING_PATH = ('M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01'
+                             'M9 15v.01M9 18v.01')
+
+            if label == "Flight + Hotel":
+                icons = (
+                    f'<g transform="translate(40 30) scale(1.8)">'
+                    f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
+                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></g>'
+                    f'<g transform="translate(100 30) scale(1.8)">'
+                    f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
+                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></g>'
+                )
+            elif label == "Flight":
+                icons = (
+                    f'<g transform="translate(60 22) scale(2.6)">'
+                    f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
+                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></g>'
+                )
+            else:
+                icons = (
+                    f'<g transform="translate(60 22) scale(2.6)">'
+                    f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
+                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></g>'
+                )
+
+            return (
+                f'<svg viewBox="0 0 180 140" xmlns="http://www.w3.org/2000/svg" '
+                f'preserveAspectRatio="xMidYMid meet" '
+                f'style="display:block;width:100%;height:auto;">'
+                f'<rect x="2" y="2" width="176" height="136" rx="14" '
+                f'fill="{bg}" stroke="{border}" stroke-width="2"/>{icons}'
+                f'<text x="90" y="120" text-anchor="middle" '
+                f'font-family="Inter,-apple-system,BlinkMacSystemFont,sans-serif" '
+                f'font-size="14" font-weight="600" fill="{fg}">{label}</text></svg>'
+            )
+
+        # Build tile divs with data-scope-idx for the click handler
+        tiles = []
+        for idx, label in enumerate(OPTIONS):
+            tiles.append(
+                f'<div class="scope-tile" data-scope-idx="{idx}" role="button" tabindex="0" '
+                f'style="cursor:pointer;outline:none;transition:transform 120ms ease;">'
+                f'{tile_svg(label, label == current)}</div>'
+            )
+
         if tile_is_mobile:
-            # Mobile: full-width grid, taller square-ish tiles
-            div_style = {
-                "display": "grid",
-                "grid-template-columns": "1fr 1fr 1fr",
-                "gap": "8px",
-                "justify-content": "center",
-            }
-            img_style = {
-                "cursor": "pointer",
-                "width": "100%",
-                "height": "auto",
-                "border-radius": "14px",
-                "transition": "transform .12s",
-            }
+            grid_style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"
+            cap_style = ""
         else:
-            # Desktop: shorter tiles with a max-height cap so they don't dominate the form
-            div_style = {
-                "display": "grid",
-                "grid-template-columns": "1fr 1fr 1fr",
-                "gap": "10px",
-                "justify-content": "center",
-                "max-width": "600px",
-                "margin": "0 auto",
-            }
-            img_style = {
-                "cursor": "pointer",
-                "width": "100%",
-                "max-height": "90px",
-                "height": "auto",
-                "object-fit": "contain",
-                "border-radius": "14px",
-                "transition": "transform .12s",
-            }
+            grid_style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;"
+            cap_style = "max-width:600px;margin:0 auto;"
 
-        clicked = clickable_images(
-            images,
-            titles=titles,
-            div_style=div_style,
-            img_style=img_style,
-            key="scope_tiles_clickable",
-        )
+        # Render the visual tile grid + click bridge script (parent DOM, no iframe)
+        st.html(f'''
+<div class="scope-tiles-wrap" style="{cap_style}">
+  <div class="scope-tiles-grid" style="{grid_style}">
+    {"".join(tiles)}
+  </div>
+</div>
+<div id="scope-trigger-fence"></div>
+<style>
+.scope-tile:hover {{ transform: scale(1.015); }}
+.scope-tile:active {{ transform: scale(.98); }}
+.scope-tile:focus-visible svg rect {{ stroke: #0A0A0B; stroke-width: 3; }}
+/* Hide the row of trigger buttons immediately after our fence marker */
+[data-testid="stElementContainer"]:has(#scope-trigger-fence) + [data-testid="stHorizontalBlock"],
+[data-testid="element-container"]:has(#scope-trigger-fence) + [data-testid="stHorizontalBlock"] {{
+    display: none !important;
+}}
+</style>
+<script>
+(function() {{
+  function bindTiles() {{
+    document.querySelectorAll('.scope-tile').forEach(function(tile) {{
+      if (tile.dataset.bound === '1') return;
+      tile.dataset.bound = '1';
+      var go = function() {{
+        var idx = tile.getAttribute('data-scope-idx');
+        var label = '__SCOPE_TRIG_' + idx + '__';
+        var btns = Array.from(document.querySelectorAll('button'));
+        var target = btns.find(function(b) {{
+          return (b.textContent || '').trim() === label;
+        }});
+        if (target) target.click();
+      }};
+      tile.addEventListener('click', go);
+      tile.addEventListener('keydown', function(e) {{
+        if (e.key === 'Enter' || e.key === ' ') {{ e.preventDefault(); go(); }}
+      }});
+    }});
+  }}
+  bindTiles();
+  // Streamlit re-renders DOM on every interaction; re-bind periodically
+  setInterval(bindTiles, 300);
+}})();
+</script>
+        ''')
 
-        if clicked > -1 and OPTIONS[clicked] != current:
-            st.session_state["t_scope"] = OPTIONS[clicked]
-            st.rerun()
+        # Hidden trigger buttons — clicked programmatically by the JS above.
+        # Stay in DOM (clickable via .click()) but display:none'd by the CSS rule above.
+        trig_cols = st.columns(3)
+        for idx, label in enumerate(OPTIONS):
+            with trig_cols[idx]:
+                if st.button(f"__SCOPE_TRIG_{idx}__", key=f"scope_trig_{idx}"):
+                    if st.session_state.get("t_scope") != label:
+                        st.session_state["t_scope"] = label
+                        st.rerun()
 
-        return st.session_state.get("t_scope", "Flight + Hotel")
+        return st.session_state.get("t_scope", OPTIONS[0])
 
     def mf_open(label, value=""):
         val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
