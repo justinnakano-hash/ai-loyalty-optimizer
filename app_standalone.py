@@ -4,6 +4,7 @@ import json
 import re
 import hashlib
 from datetime import date, timedelta
+import datetime as _dt
 from metadata_refresh import load_metadata, is_stale, refresh_metadata, save_metadata
 
 # ── Load shared metadata (cached 24h, zero per-user cost) ──
@@ -1169,29 +1170,44 @@ if not st.session_state.get("_profile_loaded"):
 #  MOCK / PREVIEW DATA
 #  The hardcoded MOCK below is the fallback used until at least one real
 #  Claude run has been captured. Every successful real run is saved to
-#  last_run.json on disk, and get_mock() returns that file's contents in
-#  preference to the hardcoded fallback — so preview mode always shows
-#  the most recent realistic output.
+#  both a process-level cache (always current within the same Streamlit
+#  process) AND last_run.json on disk (survives restarts/redeploys).
+#  get_mock() returns the most recent real run if available, else the
+#  hardcoded fallback.
 # ─────────────────────────────────────────────
 _LAST_RUN_PATH = _Path(__file__).parent / "last_run.json"
 
-def _save_last_run(result):
-    """Persist a successful real Claude response for use as future mock data."""
-    try:
-        _LAST_RUN_PATH.write_text(json.dumps(result, indent=2))
-    except Exception:
-        pass  # disk write failure is non-fatal — mock just stays on the older snapshot
-
-def _load_last_run():
-    """Return the most recent saved real run, or None if none has been captured."""
+@st.cache_resource
+def _last_run_store():
+    """
+    Process-level mutable dict. Survives reruns within the same process and
+    is shared across all sessions — perfect for a single "most recent run"
+    pointer. We seed it from disk on first access so a process restart
+    recovers the last persisted run.
+    """
+    store = {"value": None}
     if _LAST_RUN_PATH.exists():
         try:
             data = json.loads(_LAST_RUN_PATH.read_text())
             if isinstance(data, dict) and data:
-                return data
+                store["value"] = data
         except Exception:
             pass
-    return None
+    return store
+
+def _save_last_run(result):
+    """Persist a successful Claude run to both in-memory cache and disk."""
+    # In-memory: always succeeds, immediately available to get_mock()
+    _last_run_store()["value"] = result
+    # Disk: survives process restart, but may fail silently on read-only FS
+    try:
+        _LAST_RUN_PATH.write_text(json.dumps(result, indent=2))
+    except Exception:
+        pass
+
+def _load_last_run():
+    """Return the most recent saved real run, or None if none captured."""
+    return _last_run_store()["value"]
 
 def get_mock():
     """Most recent real run if available, otherwise the hardcoded fallback."""
@@ -2815,7 +2831,66 @@ def page_admin():
 
     st.markdown("---")
 
-    # ── Section 2: API key ──
+    # ── Section 1b: Last-run diagnostic (what mock mode will show) ──
+    st.markdown("### Mock data source")
+    st.caption(
+        "Mock mode shows the most recent successful real run. If no real run "
+        "has been captured yet, it falls back to the hardcoded sample."
+    )
+
+    # Inspect both layers: in-memory cache and on-disk file
+    mem_value  = _last_run_store()["value"]
+    file_exists = _LAST_RUN_PATH.exists()
+    file_size   = _LAST_RUN_PATH.stat().st_size if file_exists else 0
+    file_mtime  = (
+        _dt.datetime.fromtimestamp(_LAST_RUN_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        if file_exists else "—"
+    )
+
+    diag_col1, diag_col2 = st.columns(2)
+    with diag_col1:
+        st.metric("In-memory cache", "✅ populated" if mem_value else "❌ empty")
+        st.metric("On-disk file",    "✅ exists" if file_exists else "❌ missing")
+    with diag_col2:
+        st.metric("File size",       f"{file_size:,} bytes" if file_exists else "—")
+        st.metric("Last saved",      file_mtime)
+
+    st.caption(f"Path: `{_LAST_RUN_PATH}`")
+
+    # Show what mock mode will actually return right now
+    preview = get_mock()
+    using_fallback = preview is _MOCK_FALLBACK
+    if using_fallback:
+        st.warning(
+            "⚠️ Mock mode is using the **hardcoded fallback** (SFO → Tokyo). "
+            "No real run has been captured yet. Run a trip in live mode to "
+            "populate this."
+        )
+    else:
+        rd = preview.get("route_display", {})
+        origin = rd.get("origin", "—")
+        dest   = rd.get("destination", "—")
+        plain  = preview.get("plain_english", "")[:120]
+        st.success(
+            f"✅ Mock mode will show the last real run: **{origin} → {dest}**\n\n"
+            f"_{plain}{'…' if len(preview.get('plain_english','')) > 120 else ''}_"
+        )
+
+    ld1, ld2 = st.columns(2)
+    with ld1:
+        if st.button("Reload from disk", use_container_width=True, key="last_run_reload"):
+            # Force-reseed the in-memory store from disk
+            _last_run_store.clear()  # type: ignore[attr-defined]
+            st.rerun()
+    with ld2:
+        if st.button("Clear last run", use_container_width=True, key="last_run_clear"):
+            _last_run_store()["value"] = None
+            try:
+                if _LAST_RUN_PATH.exists():
+                    _LAST_RUN_PATH.unlink()
+            except Exception as e:
+                st.error(f"Couldn't delete file: {e}")
+            st.rerun()
     st.markdown("### API key")
     st.caption(
         "The master API key is stored securely in Streamlit secrets — never in the repo. "
