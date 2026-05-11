@@ -1127,19 +1127,32 @@ def _get_user_id_legacy():
 
 # ─────────────────────────────────────────────
 #  AUTHENTICATION SYSTEM
-#  Username/password (bcrypt-hashed) + OAuth via Streamlit's native st.login()
-#  - Users stored in users.json keyed by UUID
-#  - Session persisted via signed cookie (HMAC-SHA256)
-#  - Admin uses the existing [admin].password secret (legacy framework)
-#  - Google + Apple work via OIDC; Facebook is OAuth2 (non-OIDC) and is shown
-#    as "not configured" until a custom flow is built
+#  Email + password registration with bcrypt password hashing.
+#
+#  Security measures:
+#   - bcrypt for password hashing (industry-standard, salted, slow-by-design)
+#   - HMAC-SHA256 signed session cookies (tampering invalidates the signature)
+#   - 30-day cookie expiry baked into the token (can't reuse old cookies forever)
+#   - Constant-time signature comparison (hmac.compare_digest)
+#   - Rate limiting on login attempts (5 failures per 5 minutes per email)
+#   - Generic "Invalid email or password" error (no email enumeration)
+#   - Equalized response timing whether the email exists or not
+#   - HTML-escaped display names on render (XSS prevention)
+#   - users.json gitignored so credentials never enter source control
+#   - Admin still uses the existing [admin].password secret (legacy framework)
 # ─────────────────────────────────────────────
 import bcrypt as _bcrypt
 import hmac as _hmac
 import hashlib as _hashlib
+import secrets as _secrets_lib
+import html as _html
+import time as _time
 
 _AUTH_COOKIE_NAME = "loyalty_auth_token"
 _USERS_PATH       = _Path(__file__).parent / "users.json"
+_SESSION_TTL_DAYS = 30          # signed cookies expire after 30 days
+_MAX_LOGIN_ATTEMPTS = 5         # per email per window
+_LOGIN_ATTEMPT_WINDOW = 300     # seconds (5 minutes)
 
 @st.cache_resource
 def _users_store():
@@ -1159,6 +1172,13 @@ def _persist_users():
     except Exception:
         pass
 
+# Rate-limit failed login attempts in process memory. This resets on restart
+# (acceptable trade-off — restarting clears the lockout but also clears any
+# cached attacker progress). Keyed by lowercased email.
+@st.cache_resource
+def _login_attempts():
+    return {}
+
 def _hash_password(plain):
     return _bcrypt.hashpw(plain.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
 
@@ -1170,37 +1190,55 @@ def _check_password(plain, hashed):
     except Exception:
         return False
 
+@st.cache_resource
+def _process_local_cookie_secret():
+    """
+    Fallback secret generated once per process when no [auth].cookie_secret
+    is configured. Better than a hardcoded constant because:
+      - it can never be exfiltrated from git or a config dump
+      - it's unpredictable to an attacker
+    Trade-off: sessions don't survive Streamlit process restarts. For a real
+    persistent secret, set [auth].cookie_secret in secrets.toml.
+    """
+    return _secrets_lib.token_bytes(32)
+
 def _cookie_secret_bytes():
-    """
-    Secret used to sign auth cookies. Prefer [auth].cookie_secret in secrets
-    (the same key Streamlit's native st.login uses) so we share one secret.
-    Falls back to a constant — works, but predictable; should be set in prod.
-    """
+    """Return the HMAC secret used to sign auth cookies."""
     s = None
     try:
         s = st.secrets.get("auth", {}).get("cookie_secret", None)
     except Exception:
         pass
-    if not s:
-        s = "loyalty-app-please-set-auth-cookie-secret-in-secrets-toml"
-    return s.encode("utf-8") if isinstance(s, str) else s
+    if s:
+        return s.encode("utf-8") if isinstance(s, str) else s
+    return _process_local_cookie_secret()
 
 def _sign(payload):
-    return _hmac.new(_cookie_secret_bytes(), payload.encode("utf-8"), _hashlib.sha256).hexdigest()
+    return _hmac.new(_cookie_secret_bytes(), payload.encode("utf-8"),
+                     _hashlib.sha256).hexdigest()
 
 def _make_token(user_id):
-    return f"{user_id}.{_sign(user_id)}"
+    """Format: <user_id>.<issued_at>.<hmac(user_id.issued_at)>"""
+    issued_at = int(_time.time())
+    payload   = f"{user_id}.{issued_at}"
+    return f"{payload}.{_sign(payload)}"
 
 def _verify_token(token):
-    if not token or "." not in token:
+    """Return user_id if signature valid AND not expired, else None."""
+    if not token or token.count(".") != 2:
         return None
     try:
-        user_id, sig = token.rsplit(".", 1)
-        if _hmac.compare_digest(sig, _sign(user_id)):
-            return user_id
+        user_id, ts_str, sig = token.split(".")
+        payload = f"{user_id}.{ts_str}"
+        # Constant-time comparison guards against timing attacks
+        if not _hmac.compare_digest(sig, _sign(payload)):
+            return None
+        issued_at = int(ts_str)
+        if _time.time() - issued_at > _SESSION_TTL_DAYS * 86400:
+            return None
+        return user_id
     except Exception:
-        pass
-    return None
+        return None
 
 def _find_user_by_email(email):
     email = (email or "").strip().lower()
@@ -1208,12 +1246,6 @@ def _find_user_by_email(email):
         return None
     for uid, u in _users_store()["users"].items():
         if u.get("email", "").lower() == email:
-            return uid, u
-    return None
-
-def _find_user_by_oauth(provider, subject):
-    for uid, u in _users_store()["users"].items():
-        if u.get("oauth", {}).get(provider) == subject:
             return uid, u
     return None
 
@@ -1235,55 +1267,74 @@ def register_user(email, password, display_name):
         "email":         email,
         "display_name":  (display_name or email.split("@")[0]).strip(),
         "password_hash": _hash_password(password),
-        "oauth":         {},
         "created_at":    _now_iso(),
         "last_login_at": _now_iso(),
     }
     _persist_users()
     return user_id, None
 
+def _check_rate_limit(email):
+    """Return (allowed, retry_after_seconds_or_message). Limits brute force."""
+    email = (email or "").strip().lower()
+    if not email:
+        return True, None
+    rec = _login_attempts().get(email)
+    if not rec:
+        return True, None
+    if rec["count"] >= _MAX_LOGIN_ATTEMPTS:
+        elapsed = _time.time() - rec["first_at"]
+        if elapsed < _LOGIN_ATTEMPT_WINDOW:
+            remaining = int(_LOGIN_ATTEMPT_WINDOW - elapsed)
+            return False, (f"Too many failed attempts. Try again in "
+                           f"{remaining // 60}m {remaining % 60}s.")
+        # Window has passed — reset
+        _login_attempts().pop(email, None)
+    return True, None
+
+def _record_failed_login(email):
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    now = _time.time()
+    rec = _login_attempts().get(email)
+    if not rec or now - rec.get("first_at", 0) > _LOGIN_ATTEMPT_WINDOW:
+        _login_attempts()[email] = {"count": 1, "first_at": now}
+    else:
+        rec["count"] += 1
+
+def _clear_failed_logins(email):
+    _login_attempts().pop((email or "").strip().lower(), None)
+
 def authenticate_password(email, password):
-    """Returns (user_id, None) on success or (None, error_message) on failure."""
+    """
+    Returns (user_id, None) on success or (None, error_message) on failure.
+
+    Security notes:
+      - Same generic error for "no such email" and "wrong password" so an
+        attacker can't enumerate which emails are registered.
+      - bcrypt.checkpw runs even when there's no matching user, so the timing
+        of the response doesn't leak account existence.
+      - Failed attempts are rate-limited per email (5 per 5 minutes).
+    """
+    ok, msg = _check_rate_limit(email)
+    if not ok:
+        return None, msg
+
+    GENERIC_ERROR = "Invalid email or password."
     found = _find_user_by_email(email)
     if not found:
-        return None, "No account with that email."
+        # Still run a bcrypt check against a dummy hash to equalize timing
+        _check_password(password or "", "$2b$12$" + "x" * 53)
+        _record_failed_login(email)
+        return None, GENERIC_ERROR
     uid, u = found
     if not _check_password(password, u.get("password_hash")):
-        return None, "Incorrect password."
+        _record_failed_login(email)
+        return None, GENERIC_ERROR
+    _clear_failed_logins(email)
     u["last_login_at"] = _now_iso()
     _persist_users()
     return uid, None
-
-def find_or_create_oauth_user(provider, subject, email, name):
-    """Link OAuth identity to an existing email account or create a new one."""
-    found = _find_user_by_oauth(provider, subject)
-    if found:
-        uid, u = found
-        u["last_login_at"] = _now_iso()
-        _persist_users()
-        return uid
-    # Link to existing email account if there is one
-    if email:
-        found = _find_user_by_email(email)
-        if found:
-            uid, u = found
-            u.setdefault("oauth", {})[provider] = subject
-            u["last_login_at"] = _now_iso()
-            _persist_users()
-            return uid
-    # Brand-new OAuth account
-    user_id = _uuid.uuid4().hex
-    _users_store()["users"][user_id] = {
-        "user_id":       user_id,
-        "email":         (email or "").lower(),
-        "display_name":  name or (email.split("@")[0] if email else "User"),
-        "password_hash": None,
-        "oauth":         {provider: subject},
-        "created_at":    _now_iso(),
-        "last_login_at": _now_iso(),
-    }
-    _persist_users()
-    return user_id
 
 # ─────────────────────────────────────────────
 #  SESSION STATE
@@ -1321,45 +1372,18 @@ def logout():
     st.session_state.profile = {}
     st.session_state.page = "profile"
     _clear_auth_cookie()
-    # Also clear Streamlit's native OAuth session if it's active
-    try:
-        if hasattr(st, "user") and st.user.is_logged_in:
-            st.logout()
-    except Exception:
-        pass
 
 def is_logged_in():
     return bool(st.session_state.auth_user_id or st.session_state.auth_is_admin)
 
 def current_user():
-    """User dict for password/OAuth users; None for admin or anonymous."""
+    """User dict for the logged-in user, or None when anonymous/admin."""
     uid = st.session_state.auth_user_id
     return _users_store()["users"].get(uid) if uid else None
 
 # ─────────────────────────────────────────────
-#  AUTO-LOGIN FROM COOKIE / OAUTH RETURN
+#  AUTO-LOGIN FROM SIGNED COOKIE
 # ─────────────────────────────────────────────
-# 1) Did the user return from a Streamlit-native OAuth flow (st.login)?
-try:
-    if (hasattr(st, "user") and st.user.is_logged_in
-            and not st.session_state.auth_user_id
-            and not st.session_state.auth_is_admin):
-        provider = (st.user.get("iss") or "").lower()
-        # Map issuer to friendly provider name
-        if "google" in provider:           provider_key = "google"
-        elif "apple"  in provider:         provider_key = "apple"
-        elif "microsoft" in provider or "windows.net" in provider: provider_key = "microsoft"
-        else:                              provider_key = "oidc"
-        subject = st.user.get("sub", "")
-        email   = st.user.get("email", "")
-        name    = st.user.get("name", "")
-        if subject:
-            uid = find_or_create_oauth_user(provider_key, subject, email, name)
-            login_user(uid)
-except Exception:
-    pass
-
-# 2) Auto-login from signed cookie (password users)
 if (not st.session_state.auth_user_id
         and not st.session_state.auth_is_admin
         and _COOKIES_OK and _cookies is not None):
@@ -1576,44 +1600,6 @@ _MOCK_FALLBACK = {
 # ─────────────────────────────────────────────
 #  PAGE: LOGIN / REGISTER
 # ─────────────────────────────────────────────
-def _oauth_button(label, provider_key, icon_svg, configured):
-    """Render one OAuth provider button. Falls back to a disabled state when
-    the provider isn't configured in secrets.toml."""
-    if not configured:
-        st.button(
-            f"{label} — not configured",
-            disabled=True,
-            use_container_width=True,
-            key=f"oauth_{provider_key}_disabled",
-            help=(f"To enable {label}, add the [auth.{provider_key}] block to "
-                  f"secrets.toml. See admin → API key section for setup notes.")
-        )
-        return
-    if st.button(label, use_container_width=True, key=f"oauth_{provider_key}_btn"):
-        try:
-            # st.login(provider) for named providers; st.login() for default
-            st.login(provider_key)
-        except Exception as e:
-            st.error(f"{label} login failed: {e}")
-
-def _is_oauth_provider_configured(provider_key):
-    """Inspect secrets to see if a given OIDC provider is configured."""
-    try:
-        auth = st.secrets.get("auth", {})
-        # Named provider: [auth.google] / [auth.apple] / etc.
-        if provider_key in auth and isinstance(auth[provider_key], dict):
-            sub = auth[provider_key]
-            return bool(sub.get("client_id") and sub.get("client_secret")
-                        and sub.get("server_metadata_url"))
-        # Single default provider in [auth] itself
-        if (auth.get("client_id") and auth.get("client_secret")
-                and auth.get("server_metadata_url")):
-            # We can't tell which provider — treat as configured for "google" by convention
-            return provider_key == "google"
-        return False
-    except Exception:
-        return False
-
 def page_login():
     """Login + register UI. Renders inline; the caller is responsible for st.stop()."""
     is_register = (st.session_state.auth_view == "register")
@@ -1638,14 +1624,6 @@ def page_login():
       .auth-sub {
         font-size: 13px; color: #666; margin: 0 0 1.5rem; line-height: 1.5;
       }
-      .auth-divider {
-        display: flex; align-items: center; gap: 12px;
-        margin: 1.25rem 0; color: #999; font-size: 11px;
-        text-transform: uppercase; letter-spacing: .08em;
-      }
-      .auth-divider::before, .auth-divider::after {
-        content: ""; flex: 1; height: 1px; background: var(--line, #E5E5E0);
-      }
       .auth-foot {
         margin-top: 1.25rem; padding-top: 1rem;
         border-top: 1px solid var(--line, #E5E5E0);
@@ -1664,8 +1642,14 @@ def page_login():
         name  = st.text_input("Name",     key="reg_name",  placeholder="Justin")
         email = st.text_input("Email",    key="reg_email", placeholder="you@example.com")
         pw    = st.text_input("Password", key="reg_pw",    type="password",
-                              placeholder="At least 8 characters")
+                              placeholder="At least 8 characters",
+                              help="Use a long passphrase. NIST recommends length over complexity.")
         pw2   = st.text_input("Confirm password", key="reg_pw2", type="password")
+
+        st.caption(
+            "🔒 Your password is hashed with bcrypt before being stored — we never "
+            "see or save the plain text. Your email is stored to identify your account."
+        )
 
         if st.button("Create account", type="primary", use_container_width=True, key="reg_submit"):
             if pw != pw2:
@@ -1689,18 +1673,6 @@ def page_login():
         st.markdown('<p class="auth-title">Welcome back</p>', unsafe_allow_html=True)
         st.markdown('<p class="auth-sub">Log in to access your loyalty profile and trip plans.</p>',
                     unsafe_allow_html=True)
-
-        # OAuth providers
-        google_ok   = _is_oauth_provider_configured("google")
-        apple_ok    = _is_oauth_provider_configured("apple")
-        # Facebook isn't OIDC, so it's never "configured" via st.login. Show as disabled.
-        facebook_ok = False
-
-        _oauth_button("Continue with Google",   "google",   None, google_ok)
-        _oauth_button("Continue with Apple",    "apple",    None, apple_ok)
-        _oauth_button("Continue with Facebook", "facebook", None, facebook_ok)
-
-        st.markdown('<div class="auth-divider">or</div>', unsafe_allow_html=True)
 
         email = st.text_input("Email",    key="login_email", placeholder="you@example.com")
         pw    = st.text_input("Password", key="login_pw",    type="password")
@@ -3444,12 +3416,13 @@ if not st.session_state.get("_profile_loaded"):
         st.session_state.profile = dict(saved)
     st.session_state["_profile_loaded"] = True
 
-# Display name for the header
+# Display name for the header (HTML-escaped to prevent XSS via malicious names)
 _who = current_user()
-_account_label = (
+_raw_label = (
     "Admin" if st.session_state.auth_is_admin
     else (_who.get("display_name") or _who.get("email", "User") if _who else "User")
 )
+_account_label = _html.escape(_raw_label)
 
 if IS_MOBILE:
     # Hide the title on mobile (the card titles take over) — wrap so CSS rule applies
