@@ -2,6 +2,7 @@ import streamlit as st
 import anthropic
 import json
 import re
+import hashlib
 from datetime import date, timedelta
 from metadata_refresh import load_metadata, is_stale, refresh_metadata, save_metadata
 
@@ -1476,23 +1477,23 @@ _SYSTEM_PROMPT = ("You are an expert travel strategist. "
                   "Return ONLY valid JSON, no markdown, no extra text.")
 
 
-def _build_prompt(d, params):
-    scope = []
-    if params['include_flight']: scope.append("flight")
-    if params['include_hotel']:  scope.append("hotel")
-    scope_str = " and ".join(scope)
+def _build_prompt_parts(d, params):
+    """
+    Returns (cacheable_prefix, dynamic_suffix).
 
-    cpp_data    = json.dumps(get_metadata().get("point_valuations", {}),  indent=2)
-    xfr_data    = json.dumps(get_metadata().get("transfer_partners", {}), indent=2)
-    promos      = json.dumps(get_metadata().get("promotions", []),         indent=2)
-    benchmarks  = json.dumps(get_metadata().get("cash_rate_benchmarks", {}), indent=2)
-    thresholds  = json.dumps(get_metadata().get("cpp_thresholds", {}),    indent=2)
+    - cacheable_prefix contains metadata + JSON schema + invariant instructions.
+      This text is identical for every call (within a metadata refresh window),
+      so we mark it with cache_control to get a 90% discount on cached reads.
+    - dynamic_suffix contains the user's specific profile + trip, which
+      changes per call and must NOT be cached.
+    """
+    cpp_data    = json.dumps(get_metadata().get("point_valuations", {}),    indent=2)
+    xfr_data    = json.dumps(get_metadata().get("transfer_partners", {}),   indent=2)
+    promos      = json.dumps(get_metadata().get("promotions", []),          indent=2)
+    benchmarks  = json.dumps(get_metadata().get("cash_rate_benchmarks", {}),indent=2)
+    thresholds  = json.dumps(get_metadata().get("cpp_thresholds", {}),      indent=2)
 
-    return f"""Generate the optimal {scope_str} loyalty strategy. Use the metadata below to calculate
-exact cent-per-point values, identify transfer paths, flag promotions, and decide if cash beats points.
-
-USER PROFILE & TRIP:
-{json.dumps(d, indent=2)}
+    cacheable_prefix = f"""You generate optimal flight/hotel loyalty strategies for given user profiles and trips.
 
 CURRENT POINT VALUATIONS (cpp = cents per point at best redemption):
 {cpp_data}
@@ -1509,10 +1510,11 @@ CASH RATE BENCHMARKS:
 CPP DECISION THRESHOLDS:
 {thresholds}
 
-Return EXACTLY this JSON (no markdown, no extra text):
+Return EXACTLY this JSON structure (no markdown, no extra text). Fill all fields
+based on the USER PROFILE & TRIP supplied below this block:
 {{
   "plain_english": "One friendly sentence summarising the strategy — no jargon",
-  "route_display": {{"origin": "{params['origin_city']}", "destination": "{params['dest_city']}"}},
+  "route_display": {{"origin": "<origin city name>", "destination": "<destination city name>"}},
   "hero": {{
     "flight_pts": "e.g. 60,000 Chase pts",
     "hotel_nights": "e.g. 4 nights paid, 5th free",
@@ -1590,16 +1592,73 @@ Return EXACTLY this JSON (no markdown, no extra text):
 Use city names not airport codes. Keep everything friendly. Do NOT assume real-time seat availability.
 Use the metadata CPP values and thresholds to make the cash vs points recommendation mathematically."""
 
+    scope = []
+    if params['include_flight']: scope.append("flight")
+    if params['include_hotel']:  scope.append("hotel")
+    scope_str = " and ".join(scope)
+
+    dynamic_suffix = f"""Generate the optimal {scope_str} loyalty strategy for this trip:
+
+USER PROFILE & TRIP:
+{json.dumps(d, indent=2)}
+
+ROUTE: {params['origin_city']} → {params['dest_city']}"""
+
+    return cacheable_prefix, dynamic_suffix
+
+
+def _metadata_cache_key():
+    """Stable hash of current metadata — used to invalidate result cache
+    when metadata refreshes (otherwise stale answers could persist)."""
+    m = get_metadata()
+    return hashlib.md5(
+        json.dumps(m, sort_keys=True, default=str).encode()
+    ).hexdigest()[:12]
+
 
 def _call_claude(key, data, params):
+    """
+    Call Claude with prompt caching. The static prefix (metadata + schema)
+    is marked cache_control=ephemeral, giving a 90% discount on cached reads
+    for subsequent calls within ~5 minutes.
+    """
     client = anthropic.Anthropic(api_key=key)
+    prefix, suffix = _build_prompt_parts(data, params)
     msg = client.messages.create(
-        model="claude-opus-4-5", max_tokens=2000, system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": _build_prompt(data, params)}])
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        system=_SYSTEM_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prefix,
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {
+                    "type": "text",
+                    "text": suffix,
+                },
+            ],
+        }],
+    )
     raw = msg.content[0].text.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
     return json.loads(raw)
+
+
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=200)
+def _call_claude_cached(_api_key, data, params, _meta_key):
+    """
+    Cache full Claude responses keyed on (data, params, metadata version).
+    Leading-underscore arguments are excluded from the hash by st.cache_data,
+    so the api_key never enters the cache key — same input → same output
+    regardless of which API key initiated the call. The metadata key IS
+    hashed (no underscore) so a metadata refresh invalidates stale answers.
+    """
+    return _call_claude(_api_key, data, params)
 
 # ─────────────────────────────────────────────
 #  RESULTS RENDERER — DESKTOP (unchanged from original)
@@ -2552,7 +2611,7 @@ def page_trip():
         with st.spinner("Finding your best trip…"):
             try:
                 data = _build_trip_data(profile, params)
-                result = _call_claude(api_key, data, params)
+                result = _call_claude_cached(api_key, data, params, _metadata_cache_key())
                 _render_results_desktop(result, params)
             except json.JSONDecodeError as e: st.error(f"Unexpected response: {e}")
             except anthropic.AuthenticationError: st.error("API key issue — please contact the administrator.")
