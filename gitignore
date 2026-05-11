@@ -1,6 +1,7 @@
 # Runtime state files — don't commit user data or runtime config
 admin_settings.json
 profile_*.json
+last_run.json
 
 # Python
 __pycache__/
