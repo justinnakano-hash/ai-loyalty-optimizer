@@ -859,6 +859,34 @@ iframe[height="0"], iframe[height="1"] { display: none !important; }
     overflow: hidden !important;
     text-overflow: ellipsis !important;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   SCOPE TILE SHELF
+   The clickable_images iframe has a forced white background that we
+   can't remove (Streamlit bug #7813). Instead of fighting it, we
+   wrap the iframe in a white card so the white iframe body BLENDS
+   visually with the surrounding card — the seam disappears, and the
+   "white area" looks like an intentional content card.
+   ════════════════════════════════════════════════════════════════ */
+.scope-tile-shelf {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 4px;
+    margin: 0 0 .75rem;
+    box-shadow: var(--shadow-1);
+}
+/* The iframe sits inside the shelf — match its background to the shelf */
+.scope-tile-shelf + [data-testid="element-container"] iframe,
+.scope-tile-shelf ~ [data-testid="stElementContainer"] iframe {
+    background: var(--paper) !important;
+    color-scheme: normal !important;
+}
+/* Catch all iframes — set their element background to white to match the shelf */
+iframe {
+    background: var(--paper) !important;
+    color-scheme: normal !important;
+}
 </style>
 """)
 
@@ -2191,23 +2219,22 @@ def page_trip():
 
     def scope_tiles():
         """
-        Three icon tiles rendered via st.html (directly in the parent DOM —
-        NO iframe, so no Streamlit-1.29+ white-background bug to fight).
-        Clicks are bridged to Python by invoking hidden st.button.click()
-        from JS. The hidden button row is collapsed via CSS.
+        Three icon tiles using st-clickable-images. The images ARE the buttons —
+        no hidden Streamlit buttons, no CSS overlay tricks. Click returns the
+        clicked image index, which we map back to the scope value.
+
+        Note: clickable_images renders in an iframe with a forced white body
+        background (Streamlit bug #7813, unfixed since Dec 2023). We work
+        around this by wrapping the call site in a white card so the iframe
+        white blends in and looks intentional.
         """
+        from st_clickable_images import clickable_images
+
+        current = st.session_state.get("t_scope", "Flight + Hotel")
         OPTIONS = ["Flight + Hotel", "Flight", "Hotel"]
-        current = st.session_state.get("t_scope", OPTIONS[0])
 
-        # Detect mobile via User-Agent so we can size tiles appropriately
-        try:
-            ua = st.context.headers.get("User-Agent", "").lower()
-            tile_is_mobile = any(s in ua for s in ["mobile", "android", "iphone", "ipad", "ipod"])
-        except Exception:
-            tile_is_mobile = False
-
-        # Inline SVG per tile (rendered straight into parent DOM, no base64)
-        def tile_svg(label, is_active):
+        # Build inline SVG data-URIs for each tile state (active vs inactive)
+        def make_tile_svg(label, is_active):
             bg     = "#0A0A0B" if is_active else "#FFFFFF"
             border = "#0A0A0B" if is_active else "#E5E5E0"
             fg     = "#FFFFFF" if is_active else "#0A0A0B"
@@ -2222,108 +2249,108 @@ def page_trip():
                 icons = (
                     f'<g transform="translate(40 30) scale(1.8)">'
                     f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></g>'
+                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</g>'
                     f'<g transform="translate(100 30) scale(1.8)">'
                     f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></g>'
+                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</g>'
                 )
             elif label == "Flight":
                 icons = (
                     f'<g transform="translate(60 22) scale(2.6)">'
                     f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></g>'
+                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</g>'
                 )
             else:
                 icons = (
                     f'<g transform="translate(60 22) scale(2.6)">'
                     f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></g>'
+                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</g>'
                 )
 
-            return (
-                f'<svg viewBox="0 0 180 140" xmlns="http://www.w3.org/2000/svg" '
-                f'preserveAspectRatio="xMidYMid meet" '
-                f'style="display:block;width:100%;height:auto;">'
+            svg = (
+                f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 140" '
+                f'width="180" height="140">'
                 f'<rect x="2" y="2" width="176" height="136" rx="14" '
-                f'fill="{bg}" stroke="{border}" stroke-width="2"/>{icons}'
+                f'fill="{bg}" stroke="{border}" stroke-width="2"/>'
+                f'{icons}'
                 f'<text x="90" y="120" text-anchor="middle" '
-                f'font-family="Inter,-apple-system,BlinkMacSystemFont,sans-serif" '
-                f'font-size="14" font-weight="600" fill="{fg}">{label}</text></svg>'
+                f'font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" '
+                f'font-size="14" font-weight="600" fill="{fg}">{label}</text>'
+                f'</svg>'
             )
+            import base64
+            b64 = base64.b64encode(svg.encode()).decode()
+            return f"data:image/svg+xml;base64,{b64}"
 
-        # Build tile divs with data-scope-idx for the click handler
-        tiles = []
-        for idx, label in enumerate(OPTIONS):
-            tiles.append(
-                f'<div class="scope-tile" data-scope-idx="{idx}" role="button" tabindex="0" '
-                f'style="cursor:pointer;outline:none;transition:transform 120ms ease;">'
-                f'{tile_svg(label, label == current)}</div>'
-            )
+        images = [make_tile_svg(label, label == current) for label in OPTIONS]
+        titles = OPTIONS
+
+        try:
+            ua = st.context.headers.get("User-Agent", "").lower()
+            tile_is_mobile = any(s in ua for s in ["mobile", "android", "iphone", "ipad", "ipod"])
+        except Exception:
+            tile_is_mobile = False
 
         if tile_is_mobile:
-            grid_style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"
-            cap_style = ""
+            div_style = {
+                "display": "grid",
+                "grid-template-columns": "1fr 1fr 1fr",
+                "gap": "8px",
+                "justify-content": "center",
+                "padding": "8px",
+            }
+            img_style = {
+                "cursor": "pointer",
+                "width": "100%",
+                "height": "auto",
+                "border-radius": "14px",
+                "transition": "transform .12s",
+            }
         else:
-            grid_style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;"
-            cap_style = "max-width:600px;margin:0 auto;"
+            div_style = {
+                "display": "grid",
+                "grid-template-columns": "1fr 1fr 1fr",
+                "gap": "10px",
+                "justify-content": "center",
+                "max-width": "600px",
+                "margin": "0 auto",
+                "padding": "10px",
+            }
+            img_style = {
+                "cursor": "pointer",
+                "width": "100%",
+                "max-height": "90px",
+                "height": "auto",
+                "object-fit": "contain",
+                "border-radius": "14px",
+                "transition": "transform .12s",
+            }
 
-        # Render the visual tile grid + click bridge script (parent DOM, no iframe)
-        st.html(f'''
-<div class="scope-tiles-wrap" style="{cap_style}">
-  <div class="scope-tiles-grid" style="{grid_style}">
-    {"".join(tiles)}
-  </div>
-</div>
-<div id="scope-trigger-fence"></div>
-<style>
-.scope-tile:hover {{ transform: scale(1.015); }}
-.scope-tile:active {{ transform: scale(.98); }}
-.scope-tile:focus-visible svg rect {{ stroke: #0A0A0B; stroke-width: 3; }}
-/* Hide the row of trigger buttons immediately after our fence marker */
-[data-testid="stElementContainer"]:has(#scope-trigger-fence) + [data-testid="stHorizontalBlock"],
-[data-testid="element-container"]:has(#scope-trigger-fence) + [data-testid="stHorizontalBlock"] {{
-    display: none !important;
-}}
-</style>
-<script>
-(function() {{
-  function bindTiles() {{
-    document.querySelectorAll('.scope-tile').forEach(function(tile) {{
-      if (tile.dataset.bound === '1') return;
-      tile.dataset.bound = '1';
-      var go = function() {{
-        var idx = tile.getAttribute('data-scope-idx');
-        var label = '__SCOPE_TRIG_' + idx + '__';
-        var btns = Array.from(document.querySelectorAll('button'));
-        var target = btns.find(function(b) {{
-          return (b.textContent || '').trim() === label;
-        }});
-        if (target) target.click();
-      }};
-      tile.addEventListener('click', go);
-      tile.addEventListener('keydown', function(e) {{
-        if (e.key === 'Enter' || e.key === ' ') {{ e.preventDefault(); go(); }}
-      }});
-    }});
-  }}
-  bindTiles();
-  // Streamlit re-renders DOM on every interaction; re-bind periodically
-  setInterval(bindTiles, 300);
-}})();
-</script>
-        ''')
+        # Wrap the clickable_images iframe in a styled white "tile shelf"
+        # card. The iframe's forced white body now BLENDS into the white card —
+        # the visual seam disappears because the surrounding container is also
+        # white. This converts a Streamlit bug into intentional design.
+        st.html('<div class="scope-tile-shelf">')
 
-        # Hidden trigger buttons — clicked programmatically by the JS above.
-        # Stay in DOM (clickable via .click()) but display:none'd by the CSS rule above.
-        trig_cols = st.columns(3)
-        for idx, label in enumerate(OPTIONS):
-            with trig_cols[idx]:
-                if st.button(f"__SCOPE_TRIG_{idx}__", key=f"scope_trig_{idx}"):
-                    if st.session_state.get("t_scope") != label:
-                        st.session_state["t_scope"] = label
-                        st.rerun()
+        clicked = clickable_images(
+            images,
+            titles=titles,
+            div_style=div_style,
+            img_style=img_style,
+            key="scope_tiles_clickable",
+        )
 
-        return st.session_state.get("t_scope", OPTIONS[0])
+        st.html('</div>')
+
+        if clicked > -1 and OPTIONS[clicked] != current:
+            st.session_state["t_scope"] = OPTIONS[clicked]
+            st.rerun()
+
+        return st.session_state.get("t_scope", "Flight + Hotel")
 
     def mf_open(label, value=""):
         val_html = f'<span class="mf-header-value">{value}</span>' if value else ""
