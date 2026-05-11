@@ -1750,24 +1750,53 @@ def page_trip():
         images = [make_tile_svg(label, label == current) for label in OPTIONS]
         titles = OPTIONS
 
-        clicked = clickable_images(
-            images,
-            titles=titles,
-            div_style={
+        # Detect mobile via User-Agent so we can size tiles appropriately
+        try:
+            ua = st.context.headers.get("User-Agent", "").lower()
+            tile_is_mobile = any(s in ua for s in ["mobile", "android", "iphone", "ipad", "ipod"])
+        except Exception:
+            tile_is_mobile = False
+
+        if tile_is_mobile:
+            # Mobile: full-width grid, taller square-ish tiles
+            div_style = {
                 "display": "grid",
                 "grid-template-columns": "1fr 1fr 1fr",
-                "gap": "10px",
+                "gap": "8px",
                 "justify-content": "center",
-                "max-width": "520px",   # cap total width on desktop
-                "margin": "0 auto",     # center it within the section
-            },
-            img_style={
+            }
+            img_style = {
                 "cursor": "pointer",
                 "width": "100%",
                 "height": "auto",
                 "border-radius": "14px",
                 "transition": "transform .12s",
-            },
+            }
+        else:
+            # Desktop: shorter tiles with a max-height cap so they don't dominate the form
+            div_style = {
+                "display": "grid",
+                "grid-template-columns": "1fr 1fr 1fr",
+                "gap": "10px",
+                "justify-content": "center",
+                "max-width": "600px",
+                "margin": "0 auto",
+            }
+            img_style = {
+                "cursor": "pointer",
+                "width": "100%",
+                "max-height": "90px",
+                "height": "auto",
+                "object-fit": "contain",
+                "border-radius": "14px",
+                "transition": "transform .12s",
+            }
+
+        clicked = clickable_images(
+            images,
+            titles=titles,
+            div_style=div_style,
+            img_style=img_style,
             key="scope_tiles_clickable",
         )
 
