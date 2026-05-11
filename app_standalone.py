@@ -195,12 +195,14 @@ button[kind="primary"], .stButton button[kind="primary"] {
     font-size: 14px !important;
     padding: .55rem 1rem !important;
     min-height: 40px !important;
+    white-space: nowrap !important;
     box-shadow: none !important;
     transition: background var(--t-fast), border-color var(--t-fast) !important;
 }
 /* Force white text on all inner elements Streamlit wraps button labels in */
 button[kind="primary"] *, .stButton button[kind="primary"] * {
     color: #fff !important;
+    white-space: nowrap !important;
 }
 button[kind="primary"]:hover, .stButton button[kind="primary"]:hover {
     background: var(--brand-hover) !important;
@@ -214,10 +216,16 @@ button[kind="secondary"], .stButton button[kind="secondary"] {
     border-radius: var(--r-sm) !important;
     font-weight: 500 !important;
     font-size: 14px !important;
-    padding: .55rem 1rem !important;
+    padding: .55rem .75rem !important;
     min-height: 40px !important;
+    white-space: nowrap !important;
     box-shadow: none !important;
     transition: background var(--t-fast), border-color var(--t-fast) !important;
+}
+button[kind="secondary"] p, .stButton button[kind="secondary"] p {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    margin: 0 !important;
 }
 button[kind="secondary"]:hover, .stButton button[kind="secondary"]:hover {
     background: var(--surface-1) !important;
@@ -845,18 +853,27 @@ div.m-cta button:active { transform: scale(.99); }
 
 /* ════════════════════════════════════════════════════════════════
    COMPONENT IFRAMES — clickable_images, etc.
-   Make iframe and its wrapper transparent so the page canvas shows.
+   Streamlit 1.29+ forces a white iframe background. Override broadly.
    ════════════════════════════════════════════════════════════════ */
-[data-testid="stIFrame"],
-[data-testid="stCustomComponentV1"],
-iframe[title="streamlit_clickable_images.clickable_images"] {
+iframe {
     background: transparent !important;
     color-scheme: normal !important;
 }
-[data-testid="stIFrame"] iframe,
-iframe[title="streamlit_clickable_images.clickable_images"] {
+[data-testid="stIFrame"],
+[data-testid="stCustomComponentV1"] {
     background: transparent !important;
-    border: none !important;
+    color-scheme: normal !important;
+}
+/* The element container that wraps any component, including its iframe */
+[data-testid="element-container"]:has(iframe),
+[data-testid="stElementContainer"]:has(iframe),
+.element-container:has(iframe) {
+    background: transparent !important;
+}
+/* Allow Edit/Remove buttons to shrink their padding when columns are narrow */
+.stButton button {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 </style>
 """)
