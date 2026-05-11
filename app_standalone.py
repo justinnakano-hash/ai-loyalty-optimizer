@@ -851,9 +851,6 @@ div.m-cta button:active { transform: scale(.99); }
     .m-hide-on-mobile { display: block; }
 }
 
-/* Hidden iframes from cookie-manager etc. — keep them out of layout */
-iframe[height="0"], iframe[height="1"] { display: none !important; }
-
 /* Allow Edit/Remove buttons to shrink their padding when columns are narrow */
 .stButton button {
     overflow: hidden !important;
@@ -863,29 +860,35 @@ iframe[height="0"], iframe[height="1"] { display: none !important; }
 /* ════════════════════════════════════════════════════════════════
    SCOPE TILE SHELF
    The clickable_images iframe has a forced white background that we
-   can't remove (Streamlit bug #7813). Instead of fighting it, we
-   wrap the iframe in a white card so the white iframe body BLENDS
-   visually with the surrounding card — the seam disappears, and the
-   "white area" looks like an intentional content card.
+   can't remove (Streamlit bug #7813). The fix: style the iframe's
+   stElementContainer as a white card, so the iframe's white body
+   blends into a deliberately white surface that looks like an
+   intentional selector card.
+
+   We mark the iframe's wrapper by placing #scope-shelf-marker
+   right before the clickable_images call. CSS then targets the
+   element-container immediately following the marker's container.
    ════════════════════════════════════════════════════════════════ */
-.scope-tile-shelf {
-    background: var(--paper);
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    padding: 4px;
-    margin: 0 0 .75rem;
-    box-shadow: var(--shadow-1);
+[data-testid="stElementContainer"]:has(#scope-shelf-marker) {
+    height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
-/* The iframe sits inside the shelf — match its background to the shelf */
-.scope-tile-shelf + [data-testid="element-container"] iframe,
-.scope-tile-shelf ~ [data-testid="stElementContainer"] iframe {
-    background: var(--paper) !important;
-    color-scheme: normal !important;
+[data-testid="stElementContainer"]:has(#scope-shelf-marker) + [data-testid="stElementContainer"] {
+    background: #FFFFFF !important;
+    border: 1px solid var(--line) !important;
+    border-radius: var(--r-md) !important;
+    padding: 6px !important;
+    margin-bottom: .75rem !important;
+    box-shadow: var(--shadow-1) !important;
+    overflow: hidden !important;
 }
-/* Catch all iframes — set their element background to white to match the shelf */
-iframe {
-    background: var(--paper) !important;
+/* And set the iframe inside that container to white so its body blends */
+[data-testid="stElementContainer"]:has(#scope-shelf-marker) + [data-testid="stElementContainer"] iframe {
+    background: #FFFFFF !important;
     color-scheme: normal !important;
+    border-radius: var(--r-sm) !important;
 }
 </style>
 """)
@@ -2330,11 +2333,11 @@ def page_trip():
                 "transition": "transform .12s",
             }
 
-        # Wrap the clickable_images iframe in a styled white "tile shelf"
-        # card. The iframe's forced white body now BLENDS into the white card —
-        # the visual seam disappears because the surrounding container is also
-        # white. This converts a Streamlit bug into intentional design.
-        st.html('<div class="scope-tile-shelf">')
+        # Place a marker div RIGHT BEFORE the clickable_images call. CSS uses
+        # this marker to find and style the NEXT stElementContainer (which is
+        # the iframe's wrapper) as a white card. This makes the iframe's forced
+        # white background blend into the wrapper visually.
+        st.html('<div id="scope-shelf-marker"></div>')
 
         clicked = clickable_images(
             images,
@@ -2343,8 +2346,6 @@ def page_trip():
             img_style=img_style,
             key="scope_tiles_clickable",
         )
-
-        st.html('</div>')
 
         if clicked > -1 and OPTIONS[clicked] != current:
             st.session_state["t_scope"] = OPTIONS[clicked]
