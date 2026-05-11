@@ -1106,12 +1106,12 @@ try:
 except Exception:
     _COOKIES_OK = False
 
-def _get_user_id():
-    """Return the persistent per-browser ID. Set the cookie if it's missing."""
+def _get_user_id_legacy():
+    """
+    Legacy anonymous-UUID helper. Preserved for backward compatibility but no
+    longer used directly — USER_ID is now the authenticated user ID instead.
+    """
     if not _COOKIES_OK or _cookies is None:
-        # Cookies unavailable — fall back to a per-process default so the app
-        # still works (data persists within this server process but not across
-        # browsers). Better than crashing.
         if not st.session_state.get("_uid"):
             st.session_state["_uid"] = _uuid.uuid4().hex
         return st.session_state["_uid"]
@@ -1120,13 +1120,268 @@ def _get_user_id():
     if existing:
         return existing
 
-    # No cookie yet — mint a UUID and persist it
     new_id = _uuid.uuid4().hex
     _cookies[_USER_COOKIE_NAME] = new_id
-    _cookies.save()  # IMPORTANT: must call save() or the cookie isn't written
+    _cookies.save()
     return new_id
 
-USER_ID = _get_user_id()
+# ─────────────────────────────────────────────
+#  AUTHENTICATION SYSTEM
+#  Username/password (bcrypt-hashed) + OAuth via Streamlit's native st.login()
+#  - Users stored in users.json keyed by UUID
+#  - Session persisted via signed cookie (HMAC-SHA256)
+#  - Admin uses the existing [admin].password secret (legacy framework)
+#  - Google + Apple work via OIDC; Facebook is OAuth2 (non-OIDC) and is shown
+#    as "not configured" until a custom flow is built
+# ─────────────────────────────────────────────
+import bcrypt as _bcrypt
+import hmac as _hmac
+import hashlib as _hashlib
+
+_AUTH_COOKIE_NAME = "loyalty_auth_token"
+_USERS_PATH       = _Path(__file__).parent / "users.json"
+
+@st.cache_resource
+def _users_store():
+    """Process-level user database. Seeded from disk on first access."""
+    if _USERS_PATH.exists():
+        try:
+            data = _json.loads(_USERS_PATH.read_text())
+            if isinstance(data, dict) and "users" in data:
+                return data
+        except Exception:
+            pass
+    return {"users": {}}
+
+def _persist_users():
+    try:
+        _USERS_PATH.write_text(_json.dumps(_users_store(), indent=2))
+    except Exception:
+        pass
+
+def _hash_password(plain):
+    return _bcrypt.hashpw(plain.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+
+def _check_password(plain, hashed):
+    if not hashed:
+        return False
+    try:
+        return _bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+def _cookie_secret_bytes():
+    """
+    Secret used to sign auth cookies. Prefer [auth].cookie_secret in secrets
+    (the same key Streamlit's native st.login uses) so we share one secret.
+    Falls back to a constant — works, but predictable; should be set in prod.
+    """
+    s = None
+    try:
+        s = st.secrets.get("auth", {}).get("cookie_secret", None)
+    except Exception:
+        pass
+    if not s:
+        s = "loyalty-app-please-set-auth-cookie-secret-in-secrets-toml"
+    return s.encode("utf-8") if isinstance(s, str) else s
+
+def _sign(payload):
+    return _hmac.new(_cookie_secret_bytes(), payload.encode("utf-8"), _hashlib.sha256).hexdigest()
+
+def _make_token(user_id):
+    return f"{user_id}.{_sign(user_id)}"
+
+def _verify_token(token):
+    if not token or "." not in token:
+        return None
+    try:
+        user_id, sig = token.rsplit(".", 1)
+        if _hmac.compare_digest(sig, _sign(user_id)):
+            return user_id
+    except Exception:
+        pass
+    return None
+
+def _find_user_by_email(email):
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    for uid, u in _users_store()["users"].items():
+        if u.get("email", "").lower() == email:
+            return uid, u
+    return None
+
+def _find_user_by_oauth(provider, subject):
+    for uid, u in _users_store()["users"].items():
+        if u.get("oauth", {}).get(provider) == subject:
+            return uid, u
+    return None
+
+def _now_iso():
+    return _dt.datetime.utcnow().isoformat() + "Z"
+
+def register_user(email, password, display_name):
+    """Returns (user_id, None) on success or (None, error_message) on failure."""
+    email = (email or "").strip().lower()
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        return None, "Please enter a valid email address."
+    if not password or len(password) < 8:
+        return None, "Password must be at least 8 characters."
+    if _find_user_by_email(email):
+        return None, "An account with that email already exists. Try logging in."
+    user_id = _uuid.uuid4().hex
+    _users_store()["users"][user_id] = {
+        "user_id":       user_id,
+        "email":         email,
+        "display_name":  (display_name or email.split("@")[0]).strip(),
+        "password_hash": _hash_password(password),
+        "oauth":         {},
+        "created_at":    _now_iso(),
+        "last_login_at": _now_iso(),
+    }
+    _persist_users()
+    return user_id, None
+
+def authenticate_password(email, password):
+    """Returns (user_id, None) on success or (None, error_message) on failure."""
+    found = _find_user_by_email(email)
+    if not found:
+        return None, "No account with that email."
+    uid, u = found
+    if not _check_password(password, u.get("password_hash")):
+        return None, "Incorrect password."
+    u["last_login_at"] = _now_iso()
+    _persist_users()
+    return uid, None
+
+def find_or_create_oauth_user(provider, subject, email, name):
+    """Link OAuth identity to an existing email account or create a new one."""
+    found = _find_user_by_oauth(provider, subject)
+    if found:
+        uid, u = found
+        u["last_login_at"] = _now_iso()
+        _persist_users()
+        return uid
+    # Link to existing email account if there is one
+    if email:
+        found = _find_user_by_email(email)
+        if found:
+            uid, u = found
+            u.setdefault("oauth", {})[provider] = subject
+            u["last_login_at"] = _now_iso()
+            _persist_users()
+            return uid
+    # Brand-new OAuth account
+    user_id = _uuid.uuid4().hex
+    _users_store()["users"][user_id] = {
+        "user_id":       user_id,
+        "email":         (email or "").lower(),
+        "display_name":  name or (email.split("@")[0] if email else "User"),
+        "password_hash": None,
+        "oauth":         {provider: subject},
+        "created_at":    _now_iso(),
+        "last_login_at": _now_iso(),
+    }
+    _persist_users()
+    return user_id
+
+# ─────────────────────────────────────────────
+#  SESSION STATE
+# ─────────────────────────────────────────────
+if "auth_user_id"  not in st.session_state: st.session_state.auth_user_id  = None
+if "auth_is_admin" not in st.session_state: st.session_state.auth_is_admin = False
+if "auth_view"     not in st.session_state: st.session_state.auth_view     = "login"  # login | register
+
+def _set_auth_cookie(user_id):
+    if _COOKIES_OK and _cookies is not None:
+        _cookies[_AUTH_COOKIE_NAME] = _make_token(user_id)
+        _cookies.save()
+
+def _clear_auth_cookie():
+    if _COOKIES_OK and _cookies is not None and _AUTH_COOKIE_NAME in _cookies:
+        try:
+            del _cookies[_AUTH_COOKIE_NAME]
+            _cookies.save()
+        except Exception:
+            pass
+
+def login_user(user_id):
+    st.session_state.auth_user_id = user_id
+    _set_auth_cookie(user_id)
+
+def login_admin():
+    st.session_state.auth_is_admin = True
+    st.session_state.admin_authed  = True  # legacy compat for existing admin checks
+
+def logout():
+    st.session_state.auth_user_id  = None
+    st.session_state.auth_is_admin = False
+    st.session_state.admin_authed  = False
+    st.session_state["_profile_loaded"] = False
+    st.session_state.profile = {}
+    st.session_state.page = "profile"
+    _clear_auth_cookie()
+    # Also clear Streamlit's native OAuth session if it's active
+    try:
+        if hasattr(st, "user") and st.user.is_logged_in:
+            st.logout()
+    except Exception:
+        pass
+
+def is_logged_in():
+    return bool(st.session_state.auth_user_id or st.session_state.auth_is_admin)
+
+def current_user():
+    """User dict for password/OAuth users; None for admin or anonymous."""
+    uid = st.session_state.auth_user_id
+    return _users_store()["users"].get(uid) if uid else None
+
+# ─────────────────────────────────────────────
+#  AUTO-LOGIN FROM COOKIE / OAUTH RETURN
+# ─────────────────────────────────────────────
+# 1) Did the user return from a Streamlit-native OAuth flow (st.login)?
+try:
+    if (hasattr(st, "user") and st.user.is_logged_in
+            and not st.session_state.auth_user_id
+            and not st.session_state.auth_is_admin):
+        provider = (st.user.get("iss") or "").lower()
+        # Map issuer to friendly provider name
+        if "google" in provider:           provider_key = "google"
+        elif "apple"  in provider:         provider_key = "apple"
+        elif "microsoft" in provider or "windows.net" in provider: provider_key = "microsoft"
+        else:                              provider_key = "oidc"
+        subject = st.user.get("sub", "")
+        email   = st.user.get("email", "")
+        name    = st.user.get("name", "")
+        if subject:
+            uid = find_or_create_oauth_user(provider_key, subject, email, name)
+            login_user(uid)
+except Exception:
+    pass
+
+# 2) Auto-login from signed cookie (password users)
+if (not st.session_state.auth_user_id
+        and not st.session_state.auth_is_admin
+        and _COOKIES_OK and _cookies is not None):
+    token = _cookies.get(_AUTH_COOKIE_NAME)
+    if token:
+        candidate = _verify_token(token)
+        if candidate and candidate in _users_store()["users"]:
+            st.session_state.auth_user_id = candidate
+
+# ─────────────────────────────────────────────
+#  AUTH GATE / USER_ID RESOLUTION
+# ─────────────────────────────────────────────
+def _resolve_user_id():
+    """Pick the storage key for profile_<id>.json based on auth state."""
+    if st.session_state.auth_user_id:
+        return st.session_state.auth_user_id
+    if st.session_state.auth_is_admin:
+        return "__admin__"
+    # Not logged in — return a placeholder; the auth gate will redirect to login
+    return "__anonymous__"
+
+USER_ID = _resolve_user_id()
 
 # Per-user JSON file on disk
 def _profile_path_for(user_id):
@@ -1159,12 +1414,8 @@ def save_profile_to_cookie():
     except Exception:
         pass
 
-# Hydrate this session's profile from the per-user store on first run
-if not st.session_state.get("_profile_loaded"):
-    saved = _profile_store_for(USER_ID)
-    if saved and not st.session_state.profile:
-        st.session_state.profile = dict(saved)
-    st.session_state["_profile_loaded"] = True
+# Profile hydration is deferred until AFTER the auth gate so it uses the
+# correct authenticated user_id rather than the placeholder __anonymous__.
 
 # ─────────────────────────────────────────────
 #  MOCK / PREVIEW DATA
@@ -1323,6 +1574,176 @@ _MOCK_FALLBACK = {
 }
 
 # ─────────────────────────────────────────────
+#  PAGE: LOGIN / REGISTER
+# ─────────────────────────────────────────────
+def _oauth_button(label, provider_key, icon_svg, configured):
+    """Render one OAuth provider button. Falls back to a disabled state when
+    the provider isn't configured in secrets.toml."""
+    if not configured:
+        st.button(
+            f"{label} — not configured",
+            disabled=True,
+            use_container_width=True,
+            key=f"oauth_{provider_key}_disabled",
+            help=(f"To enable {label}, add the [auth.{provider_key}] block to "
+                  f"secrets.toml. See admin → API key section for setup notes.")
+        )
+        return
+    if st.button(label, use_container_width=True, key=f"oauth_{provider_key}_btn"):
+        try:
+            # st.login(provider) for named providers; st.login() for default
+            st.login(provider_key)
+        except Exception as e:
+            st.error(f"{label} login failed: {e}")
+
+def _is_oauth_provider_configured(provider_key):
+    """Inspect secrets to see if a given OIDC provider is configured."""
+    try:
+        auth = st.secrets.get("auth", {})
+        # Named provider: [auth.google] / [auth.apple] / etc.
+        if provider_key in auth and isinstance(auth[provider_key], dict):
+            sub = auth[provider_key]
+            return bool(sub.get("client_id") and sub.get("client_secret")
+                        and sub.get("server_metadata_url"))
+        # Single default provider in [auth] itself
+        if (auth.get("client_id") and auth.get("client_secret")
+                and auth.get("server_metadata_url")):
+            # We can't tell which provider — treat as configured for "google" by convention
+            return provider_key == "google"
+        return False
+    except Exception:
+        return False
+
+def page_login():
+    """Login + register UI. Renders inline; the caller is responsible for st.stop()."""
+    is_register = (st.session_state.auth_view == "register")
+    container_cls = "m-card" if IS_MOBILE else "auth-card"
+
+    # Scoped styles for the auth card
+    st.html("""
+    <style>
+      .auth-card {
+        max-width: 420px;
+        margin: 2rem auto;
+        background: var(--paper, #fff);
+        border: 1px solid var(--line, #E5E5E0);
+        border-radius: 16px;
+        padding: 2rem 1.75rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,.04);
+      }
+      .auth-title {
+        font-size: 22px; font-weight: 600; color: var(--ink, #0A0A0B);
+        margin: 0 0 .35rem; letter-spacing: -.01em;
+      }
+      .auth-sub {
+        font-size: 13px; color: #666; margin: 0 0 1.5rem; line-height: 1.5;
+      }
+      .auth-divider {
+        display: flex; align-items: center; gap: 12px;
+        margin: 1.25rem 0; color: #999; font-size: 11px;
+        text-transform: uppercase; letter-spacing: .08em;
+      }
+      .auth-divider::before, .auth-divider::after {
+        content: ""; flex: 1; height: 1px; background: var(--line, #E5E5E0);
+      }
+      .auth-foot {
+        margin-top: 1.25rem; padding-top: 1rem;
+        border-top: 1px solid var(--line, #E5E5E0);
+        text-align: center; font-size: 13px; color: #666;
+      }
+    </style>
+    """)
+
+    st.markdown(f'<div class="{container_cls}">', unsafe_allow_html=True)
+
+    if is_register:
+        st.markdown('<p class="auth-title">Create your account</p>', unsafe_allow_html=True)
+        st.markdown('<p class="auth-sub">Save your loyalty profile and trip plans across devices.</p>',
+                    unsafe_allow_html=True)
+
+        name  = st.text_input("Name",     key="reg_name",  placeholder="Justin")
+        email = st.text_input("Email",    key="reg_email", placeholder="you@example.com")
+        pw    = st.text_input("Password", key="reg_pw",    type="password",
+                              placeholder="At least 8 characters")
+        pw2   = st.text_input("Confirm password", key="reg_pw2", type="password")
+
+        if st.button("Create account", type="primary", use_container_width=True, key="reg_submit"):
+            if pw != pw2:
+                st.error("Passwords don't match.")
+            else:
+                uid, err = register_user(email, pw, name)
+                if err:
+                    st.error(err)
+                else:
+                    login_user(uid)
+                    st.rerun()
+
+        st.markdown(
+            '<div class="auth-foot">Already have an account?</div>',
+            unsafe_allow_html=True)
+        if st.button("Log in instead", use_container_width=True, key="reg_to_login"):
+            st.session_state.auth_view = "login"
+            st.rerun()
+
+    else:
+        st.markdown('<p class="auth-title">Welcome back</p>', unsafe_allow_html=True)
+        st.markdown('<p class="auth-sub">Log in to access your loyalty profile and trip plans.</p>',
+                    unsafe_allow_html=True)
+
+        # OAuth providers
+        google_ok   = _is_oauth_provider_configured("google")
+        apple_ok    = _is_oauth_provider_configured("apple")
+        # Facebook isn't OIDC, so it's never "configured" via st.login. Show as disabled.
+        facebook_ok = False
+
+        _oauth_button("Continue with Google",   "google",   None, google_ok)
+        _oauth_button("Continue with Apple",    "apple",    None, apple_ok)
+        _oauth_button("Continue with Facebook", "facebook", None, facebook_ok)
+
+        st.markdown('<div class="auth-divider">or</div>', unsafe_allow_html=True)
+
+        email = st.text_input("Email",    key="login_email", placeholder="you@example.com")
+        pw    = st.text_input("Password", key="login_pw",    type="password")
+
+        if st.button("Log in", type="primary", use_container_width=True, key="login_submit"):
+            uid, err = authenticate_password(email, pw)
+            if err:
+                st.error(err)
+            else:
+                login_user(uid)
+                st.rerun()
+
+        # Admin login (uses existing [admin].password framework)
+        with st.expander("Admin login"):
+            st.caption("For app administrators. Uses the admin password from Streamlit secrets.")
+            admin_pw = st.text_input("Admin password", type="password", key="admin_inline_pw")
+            if st.button("Log in as admin", key="admin_inline_btn", use_container_width=True):
+                try:
+                    expected = st.secrets.get("admin", {}).get("password", "")
+                except Exception:
+                    expected = ""
+                if expected and admin_pw == expected:
+                    login_admin()
+                    st.rerun()
+                else:
+                    st.error("Incorrect admin password (or admin secrets not configured).")
+
+        st.markdown(
+            '<div class="auth-foot">New here?</div>',
+            unsafe_allow_html=True)
+        if st.button("Create an account", use_container_width=True, key="login_to_reg"):
+            st.session_state.auth_view = "register"
+            st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def require_auth():
+    """Gate every page behind authentication. Renders login UI and stops."""
+    if not is_logged_in():
+        page_login()
+        st.stop()
+
+# ─────────────────────────────────────────────
 #  PAGE: MY PROFILE — DESKTOP (unchanged)
 # ─────────────────────────────────────────────
 def page_profile():
@@ -1457,23 +1878,32 @@ def page_profile():
         st.markdown("</div>", unsafe_allow_html=True)
 
 def _render_mobile_tabs():
-    """Render Profile / Plan / Admin tabs inside a card. Active tab = primary."""
+    """Render Profile / Plan / (Admin) / Log out tabs inside a card."""
     st.markdown('<div class="m-tabs">', unsafe_allow_html=True)
-    t1, t2, t3 = st.columns(3)
-    with t1:
+    show_admin = bool(st.session_state.auth_is_admin)
+    cols = st.columns(4 if show_admin else 3)
+    with cols[0]:
         if st.button("Profile", key="m_tab_profile", use_container_width=True,
                      type="primary" if st.session_state.page == "profile" else "secondary"):
             st.session_state.page = "profile"
             st.rerun()
-    with t2:
+    with cols[1]:
         if st.button("Plan", key="m_tab_plan", use_container_width=True,
                      type="primary" if st.session_state.page == "trip" else "secondary"):
             st.session_state.page = "trip"
             st.rerun()
-    with t3:
-        if st.button("Admin", key="m_tab_admin", use_container_width=True,
-                     type="primary" if st.session_state.page == "admin" else "secondary"):
-            st.session_state.page = "admin"
+    if show_admin:
+        with cols[2]:
+            if st.button("Admin", key="m_tab_admin", use_container_width=True,
+                         type="primary" if st.session_state.page == "admin" else "secondary"):
+                st.session_state.page = "admin"
+                st.rerun()
+        logout_col = cols[3]
+    else:
+        logout_col = cols[2]
+    with logout_col:
+        if st.button("Log out", key="m_tab_logout", use_container_width=True):
+            logout()
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -2744,6 +3174,11 @@ def page_admin():
         [admin]
         password   = "your-secret-password"
         api_key    = "sk-ant-..."
+
+    Admin login is now performed from the main login screen via the
+    "Admin login" expander. This page enforces the auth check via
+    st.session_state.auth_is_admin and shows a redirect message for
+    non-admin users.
     """
 
     def get_secret(section, key, fallback=None):
@@ -2762,12 +3197,10 @@ def page_admin():
         st.markdown('<p class="m-card-title">Admin</p>', unsafe_allow_html=True)
         _render_mobile_tabs()
 
-    # ── Login wall ──
-    if not st.session_state.admin_authed:
+    # ── Access check ──
+    if not st.session_state.auth_is_admin:
         if not IS_MOBILE:
             st.markdown("## Admin")
-            st.markdown('<div style="max-width:360px;">', unsafe_allow_html=True)
-
         if not secrets_configured:
             st.error(
                 "Admin secrets not configured. Add these to your Streamlit Cloud secrets:\n\n"
@@ -2775,40 +3208,22 @@ def page_admin():
                 "api_key  = \"sk-ant-...\"\n```\n\n"
                 "Go to: Streamlit Cloud → your app → Settings → Secrets"
             )
-            if IS_MOBILE: st.markdown('</div>', unsafe_allow_html=True)
-            return
-
-        pw_input = st.text_input("Admin password", type="password",
-                                 placeholder="Enter password", key="admin_pw_input")
-        if st.button("Log in", type="primary", key="admin_login_btn",
-                     use_container_width=IS_MOBILE):
-            if pw_input == admin_pw:
-                st.session_state.admin_authed = True
-                st.rerun()
-            else:
-                st.error("Incorrect password.")
-
-        if not IS_MOBILE:
-            st.markdown('</div>', unsafe_allow_html=True)
         else:
+            st.info(
+                "You're not signed in as admin. To access this panel, "
+                "log out and use the **Admin login** option on the login screen."
+            )
+            if st.button("Log out and return to login", use_container_width=IS_MOBILE,
+                         key="admin_redirect_logout"):
+                logout()
+                st.rerun()
+        if IS_MOBILE:
             st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    # ── Authenticated ──
+    # ── Authenticated as admin ──
     if not IS_MOBILE:
-        col_title, col_logout = st.columns([4, 1])
-        with col_title:
-            st.markdown("## Admin Panel")
-        with col_logout:
-            if st.button("Log out", key="admin_logout"):
-                st.session_state.admin_authed = False
-                st.session_state.page = "profile"
-                st.rerun()
-    else:
-        if st.button("Log out", key="admin_logout", use_container_width=True):
-            st.session_state.admin_authed = False
-            st.session_state.page = "profile"
-            st.rerun()
+        st.markdown("## Admin Panel")
 
     st.caption(f"Logged in as admin · API key: {master_key[:12]}..." if master_key else "")
     st.markdown("---")
@@ -3011,8 +3426,30 @@ Navigate here via the Admin nav button and enter your password.
         st.markdown('</div>', unsafe_allow_html=True)  # /m-card
 
 # ─────────────────────────────────────────────
-#  NAV + ROUTER
+#  AUTH GATE + NAV + ROUTER
 # ─────────────────────────────────────────────
+
+# Authentication gate — every page below requires login.
+# When not logged in, page_login() renders and st.stop() halts the script,
+# so the header/nav below never render on the login screen.
+require_auth()
+
+# Refresh USER_ID now that auth state is finalized.
+USER_ID = _resolve_user_id()
+
+# Hydrate the profile for the authenticated user (first run only).
+if not st.session_state.get("_profile_loaded"):
+    saved = _profile_store_for(USER_ID)
+    if saved and not st.session_state.profile:
+        st.session_state.profile = dict(saved)
+    st.session_state["_profile_loaded"] = True
+
+# Display name for the header
+_who = current_user()
+_account_label = (
+    "Admin" if st.session_state.auth_is_admin
+    else (_who.get("display_name") or _who.get("email", "User") if _who else "User")
+)
 
 if IS_MOBILE:
     # Hide the title on mobile (the card titles take over) — wrap so CSS rule applies
@@ -3020,19 +3457,22 @@ if IS_MOBILE:
     st.markdown("# AI Loyalty Optimizer")
     st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # Desktop: modern header with brand mark + tab nav
+    # Desktop: modern header with brand mark + account display + tab nav
     st.markdown(
-        '<div class="app-header">'
-        '<div class="app-brand">'
-        '<span class="app-brand-mark">AL</span>'
-        '<span>AI Loyalty Optimizer</span>'
-        '</div>'
-        '<div style="flex:0 0 auto;"></div>'
-        '</div>',
+        f'<div class="app-header">'
+        f'<div class="app-brand">'
+        f'<span class="app-brand-mark">AL</span>'
+        f'<span>AI Loyalty Optimizer</span>'
+        f'</div>'
+        f'<div style="margin-left:auto;display:flex;align-items:center;gap:.75rem;'
+        f'font-size:13px;color:#666;">'
+        f'<span>Signed in as <strong style="color:var(--ink);">{_account_label}</strong></span>'
+        f'</div>'
+        f'</div>',
         unsafe_allow_html=True
     )
 
-    nav_col1, nav_col2, nav_spacer, nav_admin = st.columns([1.4, 1.4, 3.5, 0.8])
+    nav_col1, nav_col2, nav_spacer, nav_admin, nav_logout = st.columns([1.4, 1.4, 2.7, 0.8, 0.8])
     with nav_col1:
         if st.button("My Profile", key="nav_profile", use_container_width=True,
                      type="primary" if st.session_state.page == "profile" else "secondary"):
@@ -3044,9 +3484,14 @@ else:
             st.session_state.page = "trip"
             st.rerun()
     with nav_admin:
-        if st.button("Admin", key="nav_admin", use_container_width=True,
-                     type="primary" if st.session_state.page == "admin" else "secondary"):
-            st.session_state.page = "admin"
+        if st.session_state.auth_is_admin:
+            if st.button("Admin", key="nav_admin", use_container_width=True,
+                         type="primary" if st.session_state.page == "admin" else "secondary"):
+                st.session_state.page = "admin"
+                st.rerun()
+    with nav_logout:
+        if st.button("Log out", key="nav_logout", use_container_width=True):
+            logout()
             st.rerun()
 
     st.markdown(
