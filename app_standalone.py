@@ -601,6 +601,9 @@ if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "
 #  Saves user's loyalty programs and credit cards across browser sessions.
 #  The cookie holds a JSON-serialized copy of st.session_state.profile.
 # ─────────────────────────────────────────────
+import json as _json
+from datetime import datetime, timedelta
+
 PROFILE_COOKIE = "loyalty_profile_v1"
 _cookie_ctrl = None
 try:
@@ -610,29 +613,53 @@ except Exception:
     _cookie_ctrl = None   # cookies unavailable — fall back to session-only
 
 def _hydrate_profile_from_cookie():
-    """On first load of the session, restore profile from cookie if present."""
+    """
+    Restore profile from cookie on first load.
+    The cookie controller is iframe-based — on the very first render after
+    page load, getAll() returns None because the iframe hasn't synced yet.
+    We must wait for at least one rerun before reading.
+    """
     if _cookie_ctrl is None: return
     if st.session_state.get("_profile_hydrated"): return
+    # If user already added something in this session, don't overwrite
+    if st.session_state.profile:
+        st.session_state["_profile_hydrated"] = True
+        return
+
     try:
-        raw = _cookie_ctrl.get(PROFILE_COOKIE)
-        if raw:
-            import json
-            saved = json.loads(raw) if isinstance(raw, str) else raw
-            if isinstance(saved, dict) and not st.session_state.profile:
-                st.session_state.profile = saved
+        all_cookies = _cookie_ctrl.getAll()
     except Exception:
-        pass
+        return
+
+    # None = iframe hasn't synced yet — wait for next rerun (don't mark hydrated)
+    if all_cookies is None:
+        return
+
+    # We got a response (even if empty). Mark hydrated so we don't loop.
     st.session_state["_profile_hydrated"] = True
 
+    raw = all_cookies.get(PROFILE_COOKIE)
+    if not raw:
+        return
+
+    try:
+        saved = _json.loads(raw) if isinstance(raw, str) else raw
+        if isinstance(saved, dict) and saved:
+            st.session_state.profile = saved
+    except Exception:
+        pass
+
 def save_profile_to_cookie():
-    """Call this whenever the profile changes — persists to the browser cookie."""
+    """Persist the current profile to the browser cookie (1-year expiry)."""
     if _cookie_ctrl is None: return
     try:
-        import json
-        # 1-year expiry, root path so it works across all pages
+        # Use both expires (datetime) and max_age — different versions of the
+        # underlying universal-cookie library honor different params.
+        expires = datetime.utcnow() + timedelta(days=365)
         _cookie_ctrl.set(
             PROFILE_COOKIE,
-            json.dumps(st.session_state.profile),
+            _json.dumps(st.session_state.profile),
+            expires=expires,
             max_age=60 * 60 * 24 * 365,
             path="/",
         )
