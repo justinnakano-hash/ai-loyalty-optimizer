@@ -86,14 +86,6 @@ body.is-mobile [data-testid="collapsedControl"],
 body.is-mobile button[data-testid="stSidebarCollapsedControl"] { display:none !important; }
 body.is-mobile .block-container { padding:.75rem .75rem 2rem !important; max-width:100% !important; }
 body.is-mobile .mobile-hide-title h1 { display:none !important; }
-
-/* ── Cabin/Hotel-style: segmented buttons on desktop, dropdown on mobile ──
-   st.container(key="...") auto-generates a .st-key-<key> wrapper class. */
-.st-key-cabin-mobile, .st-key-hotel-mobile { display: none; }
-body.is-mobile .st-key-cabin-desktop,
-body.is-mobile .st-key-hotel-desktop { display: none !important; }
-body.is-mobile .st-key-cabin-mobile,
-body.is-mobile .st-key-hotel-mobile { display: block !important; }
 /* Desktop layout */
 .block-container { max-width:860px !important; padding-top:1.5rem !important; }
 .plain-english { background:#e6f4ea; border-radius:10px; padding:.9rem 1.1rem;
@@ -1880,43 +1872,44 @@ def page_trip():
     if include_flight and include_hotel: pref_prev = f"{cabin_disp} · {cur_hs}"
     elif include_flight: pref_prev = cabin_disp
     else: pref_prev = cur_hs
+    # Detect mobile via User-Agent header — works at Python time, no JS, no CSS hide
+    def _is_mobile():
+        try:
+            ua = st.context.headers.get("User-Agent", "").lower()
+            return any(s in ua for s in ["mobile", "android", "iphone", "ipad", "ipod"])
+        except Exception:
+            return False
+    is_mobile = _is_mobile()
+
     mf_open("Preferences", pref_prev)
     if include_flight:
         st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .35rem;">Cabin</p>', unsafe_allow_html=True)
-        # Desktop: segmented buttons inside container with key=cabin-desktop
-        with st.container(key="cabin-desktop"):
-            seg(["Economy", "Prem. Eco", "Business", "First"], "t_cabin", "tcab", n_cols=4)
-        # Mobile: dropdown inside container with key=cabin-mobile
-        with st.container(key="cabin-mobile"):
-            cabin_options = ["Economy", "Prem. Eco", "Business", "First"]
+        cabin_options = ["Economy", "Prem. Eco", "Business", "First"]
+        if is_mobile:
             current_cabin = st.session_state.get("t_cabin", "Economy")
             cabin_idx = cabin_options.index(current_cabin) if current_cabin in cabin_options else 0
-            cabin_mobile = st.selectbox("Cabin", cabin_options,
-                                        index=cabin_idx, key="t_cabin_mobile",
-                                        label_visibility="collapsed")
-            if cabin_mobile != st.session_state.get("t_cabin"):
-                st.session_state["t_cabin"] = cabin_mobile
-                st.rerun()
-        cabin_raw = st.session_state.get("t_cabin", "Economy")
+            cabin_raw = st.selectbox("Cabin", cabin_options,
+                                     index=cabin_idx, key="t_cabin_mobile_dd",
+                                     label_visibility="collapsed")
+            st.session_state["t_cabin"] = cabin_raw
+        else:
+            cabin_raw = seg(cabin_options, "t_cabin", "tcab", n_cols=4)
         cabin = {"Prem. Eco": "Premium Economy"}.get(cabin_raw, cabin_raw)
         st.markdown('<div style="height:.4rem"></div>', unsafe_allow_html=True)
     else:
         cabin = "Economy"
     if include_hotel:
         st.markdown('<p style="font-size:12px;color:#888;margin:0 0 .35rem;">Hotel style</p>', unsafe_allow_html=True)
-        with st.container(key="hotel-desktop"):
-            seg(["Budget", "Standard", "Luxury"], "t_hotel_style", "ths", n_cols=3)
-        with st.container(key="hotel-mobile"):
-            hs_options = ["Budget", "Standard", "Luxury"]
+        hs_options = ["Budget", "Standard", "Luxury"]
+        if is_mobile:
             current_hs = st.session_state.get("t_hotel_style", "Standard")
             hs_idx = hs_options.index(current_hs) if current_hs in hs_options else 1
-            hotel_style_mobile = st.selectbox("Hotel style", hs_options,
-                                              index=hs_idx, key="t_hotel_style_mobile",
-                                              label_visibility="collapsed")
-            if hotel_style_mobile != st.session_state.get("t_hotel_style"):
-                st.session_state["t_hotel_style"] = hotel_style_mobile
-                st.rerun()
-        hotel_style = st.session_state.get("t_hotel_style", "Standard")
+            hotel_style = st.selectbox("Hotel style", hs_options,
+                                       index=hs_idx, key="t_hotel_style_mobile_dd",
+                                       label_visibility="collapsed")
+            st.session_state["t_hotel_style"] = hotel_style
+        else:
+            hotel_style = seg(hs_options, "t_hotel_style", "ths", n_cols=3)
         st.markdown('<div style="height:.4rem"></div>', unsafe_allow_html=True)
         if include_flight and is_roundtrip: hotel_nights = flight_nights
         elif include_flight: hotel_nights = st.number_input("Nights", min_value=1, max_value=60, value=5, key="t_hotel_nights")
