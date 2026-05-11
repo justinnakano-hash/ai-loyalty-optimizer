@@ -79,25 +79,6 @@ st.html("""
     }
     _checkMobile();
     window.addEventListener('resize',_checkMobile);
-
-    // Patch iframe body backgrounds to match canvas (works because Streamlit
-    // components are same-origin, so we can reach into contentDocument).
-    function _patchIframes(){
-        document.querySelectorAll('iframe').forEach(function(f){
-            try {
-                var doc = f.contentDocument || (f.contentWindow && f.contentWindow.document);
-                if(doc) {
-                    if(doc.documentElement) doc.documentElement.style.background = 'transparent';
-                    if(doc.body) doc.body.style.background = 'transparent';
-                }
-                f.style.background = 'transparent';
-                f.style.colorScheme = 'normal';
-            } catch(e) { /* cross-origin or not loaded yet */ }
-        });
-    }
-    _patchIframes();
-    // Re-run on a loop because iframes can mount late and Streamlit reruns
-    setInterval(_patchIframes, 400);
 })();
 </script>
 <style>
