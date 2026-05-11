@@ -1,10 +1,12 @@
-# Never commit real secrets
-.streamlit/secrets.toml
+# Runtime state files — don't commit user data or runtime config
+admin_settings.json
+profile_*.json
 
 # Python
 __pycache__/
 *.pyc
-.env
+.venv/
+venv/
 
-# Local dev artifacts
-*.log
+# OS
+.DS_Store
