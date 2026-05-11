@@ -597,6 +597,51 @@ if "m_search_scope" not in st.session_state: st.session_state.m_search_scope = "
 if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "Round trip"
 
 # ─────────────────────────────────────────────
+#  PROFILE PERSISTENCE VIA COOKIE
+#  Saves user's loyalty programs and credit cards across browser sessions.
+#  The cookie holds a JSON-serialized copy of st.session_state.profile.
+# ─────────────────────────────────────────────
+PROFILE_COOKIE = "loyalty_profile_v1"
+_cookie_ctrl = None
+try:
+    from streamlit_cookies_controller import CookieController
+    _cookie_ctrl = CookieController(key="profile_cookies")
+except Exception:
+    _cookie_ctrl = None   # cookies unavailable — fall back to session-only
+
+def _hydrate_profile_from_cookie():
+    """On first load of the session, restore profile from cookie if present."""
+    if _cookie_ctrl is None: return
+    if st.session_state.get("_profile_hydrated"): return
+    try:
+        raw = _cookie_ctrl.get(PROFILE_COOKIE)
+        if raw:
+            import json
+            saved = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(saved, dict) and not st.session_state.profile:
+                st.session_state.profile = saved
+    except Exception:
+        pass
+    st.session_state["_profile_hydrated"] = True
+
+def save_profile_to_cookie():
+    """Call this whenever the profile changes — persists to the browser cookie."""
+    if _cookie_ctrl is None: return
+    try:
+        import json
+        # 1-year expiry, root path so it works across all pages
+        _cookie_ctrl.set(
+            PROFILE_COOKIE,
+            json.dumps(st.session_state.profile),
+            max_age=60 * 60 * 24 * 365,
+            path="/",
+        )
+    except Exception:
+        pass
+
+_hydrate_profile_from_cookie()
+
+# ─────────────────────────────────────────────
 #  MOCK DATA
 # ─────────────────────────────────────────────
 MOCK = {
@@ -761,6 +806,7 @@ def page_profile():
                             st.session_state.profile[prog_name] = {
                                 "balance": new_bal, "status": new_status}
                             st.session_state.editing = None
+                            save_profile_to_cookie()
                             st.rerun()
                     with e4:
                         if st.button("Cancel", key=f"cancel_{prog_name}",
@@ -796,6 +842,7 @@ def page_profile():
                             del st.session_state.profile[prog_name]
                             if st.session_state.editing == prog_name:
                                 st.session_state.editing = None
+                            save_profile_to_cookie()
                             st.rerun()
 
         total = sum(e["balance"] for e in profile.values())
@@ -836,6 +883,7 @@ def page_profile():
         if st.button("+ Add", use_container_width=True, type="primary",
                      disabled=not add_prog, key="add_btn"):
             st.session_state.profile[add_prog] = {"balance": add_bal, "status": add_status}
+            save_profile_to_cookie()
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
