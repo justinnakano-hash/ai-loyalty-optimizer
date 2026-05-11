@@ -1,13 +1,15 @@
-# Runtime state files — don't commit user data or runtime config
+# Runtime state — never commit user data or runtime config
 admin_settings.json
 profile_*.json
 last_run.json
-
+users.json
+ 
 # Python
 __pycache__/
 *.pyc
 .venv/
 venv/
-
+ 
 # OS
 .DS_Store
+ 
