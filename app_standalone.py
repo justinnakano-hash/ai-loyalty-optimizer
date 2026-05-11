@@ -597,85 +597,123 @@ if "m_search_scope" not in st.session_state: st.session_state.m_search_scope = "
 if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "Round trip"
 
 # ─────────────────────────────────────────────
-#  PROFILE PERSISTENCE VIA localStorage
-#  Cookie libraries have unreliable iframe-sync timing. localStorage is
-#  synchronous, persistent across browser sessions, and bridged to Python
-#  via a query-param round-trip on initial page load.
+#  PER-USER PROFILE PERSISTENCE
+#  Strategy: store a small UUID cookie in the browser (~36 chars), use that
+#  UUID as the key for a server-side JSON file `profile_<uuid>.json`.
+#  - Cookie read: from st.context.headers["Cookie"] (real HTTP header,
+#    no iframe sync timing issues)
+#  - Cookie write: tiny JS injection on first visit only
+#  - Data: lives on the server, isolated per browser/user
 # ─────────────────────────────────────────────
 import json as _json
-import urllib.parse as _urlparse
-from streamlit import components as _components
+import uuid as _uuid
 
-LS_KEY = "loyalty_profile_v1"
+USER_COOKIE_NAME = "app_user_id"
+USER_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
-# ── STEP 1: On initial page load, check if a special query param contains
-#    localStorage data forwarded from the loader iframe. Hydrate and clear. ──
-_ls_loaded_qp = st.query_params.get("_ls_loaded")
-if _ls_loaded_qp == "1":
-    raw_profile = st.query_params.get("_ls_profile", "")
-    if raw_profile:
+def _parse_cookie_header(header):
+    """Parse 'name1=val1; name2=val2' into a dict."""
+    out = {}
+    if not header:
+        return out
+    for part in header.split(";"):
+        k, _, v = part.strip().partition("=")
+        if k:
+            out[k] = v
+    return out
+
+def _get_user_id():
+    """
+    Return the user's persistent ID:
+    1. If cookie present in request headers → use it
+    2. Else if session_state has one from earlier this session → use it
+    3. Else generate a new UUID and stash in session_state
+    """
+    # Try the request's Cookie header (set by browser on every request)
+    try:
+        cookies = _parse_cookie_header(st.context.headers.get("Cookie", ""))
+        if USER_COOKIE_NAME in cookies and cookies[USER_COOKIE_NAME]:
+            return cookies[USER_COOKIE_NAME]
+    except Exception:
+        pass
+    # Fall back to session-state UUID (used in the first session before the
+    # cookie has been set, then again on subsequent visits via the header)
+    if not st.session_state.get("_uid"):
+        st.session_state["_uid"] = _uuid.uuid4().hex
+    return st.session_state["_uid"]
+
+USER_ID = _get_user_id()
+
+# Set the cookie if it's not yet in request headers. JS runs in the iframe
+# but writes to the parent's cookie jar (same origin → same cookie store).
+def _ensure_user_cookie_set():
+    try:
+        cookies = _parse_cookie_header(st.context.headers.get("Cookie", ""))
+        if USER_COOKIE_NAME in cookies:
+            return  # already set, nothing to do
+    except Exception:
+        return  # if we can't read headers, don't try to write
+    # Cookie not yet set on browser — inject JS to set it
+    from streamlit import components as _components
+    _components.v1.html(
+        f"""<script>
+(function(){{
+  try {{
+    var doc = window.top.document;
+    if (!doc.cookie.match(/{USER_COOKIE_NAME}=/)) {{
+      doc.cookie = "{USER_COOKIE_NAME}={USER_ID}; path=/; max-age={USER_COOKIE_MAX_AGE}; SameSite=Lax";
+    }}
+  }} catch(e) {{
+    // Sandbox blocked window.top access — fall back to iframe's own doc.
+    // Since iframe is same-origin, this writes to the same cookie jar.
+    try {{
+      document.cookie = "{USER_COOKIE_NAME}={USER_ID}; path=/; max-age={USER_COOKIE_MAX_AGE}; SameSite=Lax";
+    }} catch(e2) {{}}
+  }}
+}})();
+</script>""",
+        height=0,
+    )
+
+_ensure_user_cookie_set()
+
+# Per-user JSON file on disk
+def _profile_path_for(user_id):
+    return _Path(__file__).parent / f"profile_{user_id}.json"
+
+@st.cache_resource
+def _profile_store_for(user_id):
+    """Per-user shared dict (one per UUID), loaded from disk on first call."""
+    path = _profile_path_for(user_id)
+    if path.exists():
         try:
-            decoded = _urlparse.unquote(raw_profile)
-            saved = _json.loads(decoded)
-            if isinstance(saved, dict) and saved and not st.session_state.profile:
-                st.session_state.profile = saved
+            data = _json.loads(path.read_text())
+            if isinstance(data, dict):
+                return data
         except Exception:
             pass
-    # Clear the query params so they don't stick in the URL bar
-    try:
-        del st.query_params["_ls_loaded"]
-    except Exception:
-        pass
-    try:
-        del st.query_params["_ls_profile"]
-    except Exception:
-        pass
-    st.session_state["_ls_loaded"] = True
-
-# ── STEP 2: If we haven't tried loading from localStorage yet, render a
-#    tiny invisible iframe whose JS reads localStorage on the parent
-#    (window.top) and navigates the parent URL with the data as a query
-#    param. The navigation triggers a Streamlit rerun where STEP 1 hydrates. ──
-if not st.session_state.get("_ls_loaded"):
-    _components.v1.html("""
-<script>
-(function(){
-  try {
-    var url = new URL(window.top.location.href);
-    // Guard: if we've already added this param, don't loop
-    if (url.searchParams.get("_ls_loaded") === "1") return;
-    var data = null;
-    try { data = window.top.localStorage.getItem("loyalty_profile_v1"); } catch(e) {}
-    url.searchParams.set("_ls_loaded", "1");
-    if (data) url.searchParams.set("_ls_profile", encodeURIComponent(data));
-    window.top.location.href = url.toString();
-  } catch(e) {}
-})();
-</script>
-""", height=0)
+    return {}
 
 def save_profile_to_cookie():
     """
-    Write the current profile to localStorage via an inline JS iframe.
-    Name kept as save_profile_to_cookie to avoid breaking call sites — the
-    storage mechanism is now localStorage but the API is the same.
+    Persist the current profile to the per-user file.
+    Function name kept for API compatibility with existing call sites.
     """
     try:
-        data = _json.dumps(st.session_state.profile)
-        # Escape for JS string literal — backslash first, then quote, then newlines
-        js_safe = (data.replace("\\", "\\\\")
-                       .replace("'", "\\'")
-                       .replace("\n", "\\n")
-                       .replace("\r", ""))
-        _components.v1.html(f"""
-<script>
-try {{
-  window.top.localStorage.setItem("loyalty_profile_v1", '{js_safe}');
-}} catch(e) {{}}
-</script>
-""", height=0)
+        path = _profile_path_for(USER_ID)
+        store = _profile_store_for(USER_ID)
+        store.clear()
+        store.update(st.session_state.profile)
+        path.write_text(_json.dumps(store, indent=2))
     except Exception:
-        pass
+        pass  # disk write failure is non-fatal
+
+# Hydrate this session's profile from the per-user store on first run
+if not st.session_state.get("_profile_loaded"):
+    saved = _profile_store_for(USER_ID)
+    if saved and not st.session_state.profile:
+        st.session_state.profile = dict(saved)
+    st.session_state["_profile_loaded"] = True
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
