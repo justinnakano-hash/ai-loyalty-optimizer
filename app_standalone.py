@@ -858,16 +858,30 @@ div.m-cta button:active { transform: scale(.99); }
 }
 
 /* ════════════════════════════════════════════════════════════════
+   VERTICAL RHYTHM — tighten the gap between Streamlit elements
+   Streamlit's default gap between vertical block children is too
+   generous for our card-dense form layout. Tighten globally and
+   let component margins handle deliberate spacing.
+   ════════════════════════════════════════════════════════════════ */
+[data-testid="stVerticalBlock"] {
+    gap: .35rem !important;
+}
+/* Form section pills sit flush — gap above handles spacing */
+.mf-section, .m-section {
+    margin-bottom: 0 !important;
+}
+/* Streamlit element containers shouldn't add extra margin */
+[data-testid="stElementContainer"] {
+    margin-bottom: 0 !important;
+}
+
+/* ════════════════════════════════════════════════════════════════
    SCOPE TILE SHELF
    The clickable_images iframe has a forced white background that we
    can't remove (Streamlit bug #7813). The fix: style the iframe's
    stElementContainer as a white card, so the iframe's white body
    blends into a deliberately white surface that looks like an
    intentional selector card.
-
-   We mark the iframe's wrapper by placing #scope-shelf-marker
-   right before the clickable_images call. CSS then targets the
-   element-container immediately following the marker's container.
    ════════════════════════════════════════════════════════════════ */
 [data-testid="stElementContainer"]:has(#scope-shelf-marker) {
     height: 0 !important;
@@ -880,7 +894,7 @@ div.m-cta button:active { transform: scale(.99); }
     border: 1px solid var(--line) !important;
     border-radius: var(--r-md) !important;
     padding: 6px !important;
-    margin-bottom: .75rem !important;
+    margin: 0 !important;
     box-shadow: var(--shadow-1) !important;
     overflow: hidden !important;
 }
