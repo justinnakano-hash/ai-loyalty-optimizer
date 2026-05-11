@@ -853,18 +853,18 @@ div.m-cta button:active { transform: scale(.99); }
 
 /* ════════════════════════════════════════════════════════════════
    COMPONENT IFRAMES — clickable_images, etc.
-   Streamlit 1.29+ forces a white iframe background. Override broadly.
+   Streamlit 1.29+ injects a forced white iframe body background we can't
+   reach via CSS. Workaround: set iframe to the canvas color so it blends.
    ════════════════════════════════════════════════════════════════ */
 iframe {
-    background: transparent !important;
+    background: var(--canvas) !important;
     color-scheme: normal !important;
 }
 [data-testid="stIFrame"],
 [data-testid="stCustomComponentV1"] {
-    background: transparent !important;
+    background: var(--canvas) !important;
     color-scheme: normal !important;
 }
-/* The element container that wraps any component, including its iframe */
 [data-testid="element-container"]:has(iframe),
 [data-testid="stElementContainer"]:has(iframe),
 .element-container:has(iframe) {
