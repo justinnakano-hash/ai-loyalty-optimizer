@@ -597,76 +597,85 @@ if "m_search_scope" not in st.session_state: st.session_state.m_search_scope = "
 if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "Round trip"
 
 # ─────────────────────────────────────────────
-#  PROFILE PERSISTENCE VIA COOKIE
-#  Saves user's loyalty programs and credit cards across browser sessions.
-#  The cookie holds a JSON-serialized copy of st.session_state.profile.
+#  PROFILE PERSISTENCE VIA localStorage
+#  Cookie libraries have unreliable iframe-sync timing. localStorage is
+#  synchronous, persistent across browser sessions, and bridged to Python
+#  via a query-param round-trip on initial page load.
 # ─────────────────────────────────────────────
 import json as _json
-from datetime import datetime, timedelta
+import urllib.parse as _urlparse
+from streamlit import components as _components
 
-PROFILE_COOKIE = "loyalty_profile_v1"
-_cookie_ctrl = None
-try:
-    from streamlit_cookies_controller import CookieController
-    _cookie_ctrl = CookieController(key="profile_cookies")
-except Exception:
-    _cookie_ctrl = None   # cookies unavailable — fall back to session-only
+LS_KEY = "loyalty_profile_v1"
 
-def _hydrate_profile_from_cookie():
-    """
-    Restore profile from cookie on first load.
-    The cookie controller is iframe-based — on the very first render after
-    page load, getAll() returns None because the iframe hasn't synced yet.
-    We must wait for at least one rerun before reading.
-    """
-    if _cookie_ctrl is None: return
-    if st.session_state.get("_profile_hydrated"): return
-    # If user already added something in this session, don't overwrite
-    if st.session_state.profile:
-        st.session_state["_profile_hydrated"] = True
-        return
-
+# ── STEP 1: On initial page load, check if a special query param contains
+#    localStorage data forwarded from the loader iframe. Hydrate and clear. ──
+_ls_loaded_qp = st.query_params.get("_ls_loaded")
+if _ls_loaded_qp == "1":
+    raw_profile = st.query_params.get("_ls_profile", "")
+    if raw_profile:
+        try:
+            decoded = _urlparse.unquote(raw_profile)
+            saved = _json.loads(decoded)
+            if isinstance(saved, dict) and saved and not st.session_state.profile:
+                st.session_state.profile = saved
+        except Exception:
+            pass
+    # Clear the query params so they don't stick in the URL bar
     try:
-        all_cookies = _cookie_ctrl.getAll()
-    except Exception:
-        return
-
-    # None = iframe hasn't synced yet — wait for next rerun (don't mark hydrated)
-    if all_cookies is None:
-        return
-
-    # We got a response (even if empty). Mark hydrated so we don't loop.
-    st.session_state["_profile_hydrated"] = True
-
-    raw = all_cookies.get(PROFILE_COOKIE)
-    if not raw:
-        return
-
-    try:
-        saved = _json.loads(raw) if isinstance(raw, str) else raw
-        if isinstance(saved, dict) and saved:
-            st.session_state.profile = saved
+        del st.query_params["_ls_loaded"]
     except Exception:
         pass
+    try:
+        del st.query_params["_ls_profile"]
+    except Exception:
+        pass
+    st.session_state["_ls_loaded"] = True
+
+# ── STEP 2: If we haven't tried loading from localStorage yet, render a
+#    tiny invisible iframe whose JS reads localStorage on the parent
+#    (window.top) and navigates the parent URL with the data as a query
+#    param. The navigation triggers a Streamlit rerun where STEP 1 hydrates. ──
+if not st.session_state.get("_ls_loaded"):
+    _components.v1.html("""
+<script>
+(function(){
+  try {
+    var url = new URL(window.top.location.href);
+    // Guard: if we've already added this param, don't loop
+    if (url.searchParams.get("_ls_loaded") === "1") return;
+    var data = null;
+    try { data = window.top.localStorage.getItem("loyalty_profile_v1"); } catch(e) {}
+    url.searchParams.set("_ls_loaded", "1");
+    if (data) url.searchParams.set("_ls_profile", encodeURIComponent(data));
+    window.top.location.href = url.toString();
+  } catch(e) {}
+})();
+</script>
+""", height=0)
 
 def save_profile_to_cookie():
-    """Persist the current profile to the browser cookie (1-year expiry)."""
-    if _cookie_ctrl is None: return
+    """
+    Write the current profile to localStorage via an inline JS iframe.
+    Name kept as save_profile_to_cookie to avoid breaking call sites — the
+    storage mechanism is now localStorage but the API is the same.
+    """
     try:
-        # Use both expires (datetime) and max_age — different versions of the
-        # underlying universal-cookie library honor different params.
-        expires = datetime.utcnow() + timedelta(days=365)
-        _cookie_ctrl.set(
-            PROFILE_COOKIE,
-            _json.dumps(st.session_state.profile),
-            expires=expires,
-            max_age=60 * 60 * 24 * 365,
-            path="/",
-        )
+        data = _json.dumps(st.session_state.profile)
+        # Escape for JS string literal — backslash first, then quote, then newlines
+        js_safe = (data.replace("\\", "\\\\")
+                       .replace("'", "\\'")
+                       .replace("\n", "\\n")
+                       .replace("\r", ""))
+        _components.v1.html(f"""
+<script>
+try {{
+  window.top.localStorage.setItem("loyalty_profile_v1", '{js_safe}');
+}} catch(e) {{}}
+</script>
+""", height=0)
     except Exception:
         pass
-
-_hydrate_profile_from_cookie()
 
 # ─────────────────────────────────────────────
 #  MOCK DATA
