@@ -67,7 +67,7 @@ IS_MOBILE  = VIEWPORT_W <= 768
 # Desktop CSS (unchanged from original) is always loaded.
 # Mobile CSS is appended ONLY on mobile and overrides where needed.
 
-st.markdown("""
+st.html("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -839,7 +839,7 @@ div.m-cta button:active { transform: scale(.99); }
     .m-hide-on-mobile { display: block; }
 }
 </style>
-""", unsafe_allow_html=True)
+""")
 
 # ─────────────────────────────────────────────
 #  AIRPORTS — city → (display label, IATA code)
