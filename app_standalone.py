@@ -247,6 +247,13 @@ button:focus, .stButton button:focus {
     min-height: 40px !important;
     transition: border-color var(--t-fast) !important;
 }
+/* Number input has nested elements (stepper, input field) that need
+   explicit white backgrounds — the outer div rule above doesn't reach them */
+[data-testid="stNumberInput"] input,
+[data-testid="stNumberInput"] [data-baseweb="input"],
+[data-testid="stNumberInput"] [data-baseweb="input"] > div {
+    background: var(--paper) !important;
+}
 [data-testid="stSelectbox"] > div > div:hover,
 [data-testid="stTextInput"] > div > div:hover,
 [data-testid="stNumberInput"] > div > div:hover,
