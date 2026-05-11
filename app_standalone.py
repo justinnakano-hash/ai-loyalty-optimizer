@@ -870,10 +870,7 @@ div.m-cta button:active { transform: scale(.99); }
    element-container immediately following the marker's container.
    ════════════════════════════════════════════════════════════════ */
 [data-testid="stElementContainer"]:has(#scope-shelf-marker) {
-    height: 0 !important;
-    overflow: hidden !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    display: none !important;
 }
 [data-testid="stElementContainer"]:has(#scope-shelf-marker) + [data-testid="stElementContainer"] {
     background: #FFFFFF !important;
