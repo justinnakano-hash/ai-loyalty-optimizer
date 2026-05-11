@@ -1615,7 +1615,22 @@ based on the USER PROFILE & TRIP supplied below this block:
   ]
 }}
 Use city names not airport codes. Keep everything friendly. Do NOT assume real-time seat availability.
-Use the metadata CPP values and thresholds to make the cash vs points recommendation mathematically."""
+Use the metadata CPP values and thresholds to make the cash vs points recommendation mathematically.
+
+IMPORTANT — KEEP THE RESPONSE COMPACT. Apply these array caps strictly:
+- points_analysis.flight.bars and .hotel.bars: include AT MOST 4 programs each — the ones
+  most relevant to this trip (best CPP, sufficient balance, or feasible transfer path).
+  Skip programs the user can't actually use for this booking.
+- points_analysis.flight.transfer_options and .hotel.transfer_options: AT MOST 4 each —
+  only the most promising transfer paths. Skip paths the user can't complete or that
+  yield poor value.
+- points_analysis.flight.cpp_alternatives and .hotel.cpp_alternatives: EXACTLY 3 each —
+  best, mid, and a relevant alternative.
+- alternatives: AT MOST 3 distinct alternative strategies.
+- booking_steps: AT MOST 5 steps, concise (one sentence each).
+- promotions: AT MOST 3, only ones with relevant_to_this_trip=true.
+- perks: AT MOST 5 items, short phrases.
+Skip irrelevant data. Brevity > exhaustiveness."""
 
     scope = []
     if params['include_flight']: scope.append("flight")
@@ -1651,7 +1666,7 @@ def _call_claude(key, data, params):
     prefix, suffix = _build_prompt_parts(data, params)
     msg = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4000,
+        max_tokens=8000,
         system=_SYSTEM_PROMPT,
         messages=[{
             "role": "user",
@@ -1668,6 +1683,14 @@ def _call_claude(key, data, params):
             ],
         }],
     )
+    # Detect explicit truncation so we can fail with a clear message rather
+    # than a JSON-decode error 12K chars into a half-written response.
+    if getattr(msg, "stop_reason", None) == "max_tokens":
+        raise ValueError(
+            "Claude hit the max_tokens cap before finishing the JSON response. "
+            "The schema is requesting more output than fits — either raise "
+            "max_tokens further or trim the schema."
+        )
     raw = msg.content[0].text.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
@@ -2644,6 +2667,8 @@ def page_trip():
                     "cut off or returned malformed JSON). Try again — if it keeps "
                     f"happening, contact the administrator.\n\nDetails: {e}"
                 )
+            except ValueError as e:
+                st.error(f"Response too long: {e}")
             except anthropic.AuthenticationError: st.error("API key issue — please contact the administrator.")
             except anthropic.APIError as e: st.error(f"Service error: {e}")
             except Exception as e: st.error(f"Something went wrong: {e}")
