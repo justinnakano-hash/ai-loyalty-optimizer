@@ -1651,7 +1651,7 @@ def _call_claude(key, data, params):
     prefix, suffix = _build_prompt_parts(data, params)
     msg = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=2000,
+        max_tokens=4000,
         system=_SYSTEM_PROMPT,
         messages=[{
             "role": "user",
@@ -2638,7 +2638,12 @@ def page_trip():
                 data = _build_trip_data(profile, params)
                 result = _call_claude_cached(api_key, data, params, _metadata_cache_key())
                 _render_results_desktop(result, params)
-            except json.JSONDecodeError as e: st.error(f"Unexpected response: {e}")
+            except json.JSONDecodeError as e:
+                st.error(
+                    "The response from Claude couldn't be parsed (it may have been "
+                    "cut off or returned malformed JSON). Try again — if it keeps "
+                    f"happening, contact the administrator.\n\nDetails: {e}"
+                )
             except anthropic.AuthenticationError: st.error("API key issue — please contact the administrator.")
             except anthropic.APIError as e: st.error(f"Service error: {e}")
             except Exception as e: st.error(f"Something went wrong: {e}")
