@@ -1166,9 +1166,38 @@ if not st.session_state.get("_profile_loaded"):
     st.session_state["_profile_loaded"] = True
 
 # ─────────────────────────────────────────────
-#  MOCK DATA
+#  MOCK / PREVIEW DATA
+#  The hardcoded MOCK below is the fallback used until at least one real
+#  Claude run has been captured. Every successful real run is saved to
+#  last_run.json on disk, and get_mock() returns that file's contents in
+#  preference to the hardcoded fallback — so preview mode always shows
+#  the most recent realistic output.
 # ─────────────────────────────────────────────
-MOCK = {
+_LAST_RUN_PATH = _Path(__file__).parent / "last_run.json"
+
+def _save_last_run(result):
+    """Persist a successful real Claude response for use as future mock data."""
+    try:
+        _LAST_RUN_PATH.write_text(json.dumps(result, indent=2))
+    except Exception:
+        pass  # disk write failure is non-fatal — mock just stays on the older snapshot
+
+def _load_last_run():
+    """Return the most recent saved real run, or None if none has been captured."""
+    if _LAST_RUN_PATH.exists():
+        try:
+            data = json.loads(_LAST_RUN_PATH.read_text())
+            if isinstance(data, dict) and data:
+                return data
+        except Exception:
+            pass
+    return None
+
+def get_mock():
+    """Most recent real run if available, otherwise the hardcoded fallback."""
+    return _load_last_run() or _MOCK_FALLBACK
+
+_MOCK_FALLBACK = {
     "plain_english": "Use your Chase points for a lie-flat ANA business class seat — one of the best on this route. Transfer your Amex points for 4 hotel nights in central Tokyo; the 5th is free. Out of pocket: about $150 in taxes.",
     "route_display": {"origin": "San Francisco", "destination": "Tokyo"},
     "hero": {"flight_pts": "60,000 Chase pts", "hotel_nights": "4 nights paid, 5th free", "cash": "~$150"},
@@ -1694,7 +1723,11 @@ def _call_claude(key, data, params):
     raw = msg.content[0].text.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
-    return json.loads(raw)
+    result = json.loads(raw)
+    # Capture this real run as the new mock baseline so preview mode shows
+    # realistic, up-to-date output instead of the stale hardcoded fallback.
+    _save_last_run(result)
+    return result
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=200)
@@ -2656,7 +2689,7 @@ def page_trip():
     }
 
     if mock_mode:
-        _render_results_desktop(MOCK, params, is_mock=True)
+        _render_results_desktop(get_mock(), params, is_mock=True)
     elif not api_key:
         st.warning("This app is not yet configured. Please ask the administrator to set up the API key.")
     else:
