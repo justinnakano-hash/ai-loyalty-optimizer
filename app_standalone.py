@@ -858,47 +858,69 @@ div.m-cta button:active { transform: scale(.99); }
 }
 
 /* ════════════════════════════════════════════════════════════════
-   VERTICAL RHYTHM — tighten the gap between Streamlit elements
-   Streamlit's default gap between vertical block children is too
-   generous for our card-dense form layout. Tighten globally and
-   let component margins handle deliberate spacing.
+   VERTICAL RHYTHM — UX-driven, proximity-based spacing
+   ────────────────────────────────────────────────────────────────
+   Scale (4px grid):
+     • 4px   — within tight elements (label + value pairs)
+     • 8px   — header → its content (proximity = belongs together)
+     • 12px  — between distinct form sections (rhythm)
+     • 16px  — between page-level areas
+     • 24px  — before primary CTA (emphasis through space)
+
+   We tighten Streamlit's default 1rem gap to 12px and use targeted
+   margins to create tight grouping where elements visually belong
+   together (section header → its content).
+
+   Ghost containers (empty markers, orphan close tags) are display:none'd
+   so they don't claim flex slots and double the visible gap.
    ════════════════════════════════════════════════════════════════ */
 [data-testid="stVerticalBlock"] {
-    gap: .35rem !important;
+    gap: .75rem !important;  /* 12px — base rhythm between distinct elements */
 }
-/* Form section pills sit flush — gap above handles spacing */
-.mf-section, .m-section {
-    margin-bottom: 0 !important;
+
+/* Section header pills — sit tight to their content (gap reduced to ~4px) */
+.mf-section, .m-section { margin: 0 !important; }
+
+[data-testid="stElementContainer"]:has(.mf-section) + [data-testid="stElementContainer"] {
+    margin-top: -.5rem !important;  /* 12px gap − 8px pull-up = 4px effective */
 }
-/* Streamlit element containers shouldn't add extra margin */
-[data-testid="stElementContainer"] {
-    margin-bottom: 0 !important;
+
+/* Ghost containers — empty markers and orphan tags. Hidden so they don't
+   claim flex slots in the parent vertical block, which prevents the
+   "double gap" effect (12px above + 12px below an empty container). */
+[data-testid="stElementContainer"]:has(.mf-close-marker),
+[data-testid="stElementContainer"]:has(#scope-shelf-marker) {
+    display: none !important;
+}
+
+/* Primary CTA — generous breathing room above (16px) makes it feel
+   like a deliberate "commit" action, not just another form row */
+div.m-cta {
+    margin-top: 1rem !important;
 }
 
 /* ════════════════════════════════════════════════════════════════
    SCOPE TILE SHELF
    The clickable_images iframe has a forced white background that we
    can't remove (Streamlit bug #7813). The fix: style the iframe's
-   stElementContainer as a white card, so the iframe's white body
-   blends into a deliberately white surface that looks like an
-   intentional selector card.
+   stElementContainer as a white card so the iframe body blends in
+   and looks intentional.
+
+   With the marker hidden via display:none, the iframe shelf is
+   the immediate visual sibling of the section pill — pull it up
+   tight against the pill (negative margin) for visual grouping.
    ════════════════════════════════════════════════════════════════ */
-[data-testid="stElementContainer"]:has(#scope-shelf-marker) {
-    height: 0 !important;
-    overflow: hidden !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
 [data-testid="stElementContainer"]:has(#scope-shelf-marker) + [data-testid="stElementContainer"] {
     background: #FFFFFF !important;
     border: 1px solid var(--line) !important;
     border-radius: var(--r-md) !important;
-    padding: 6px !important;
-    margin: 0 !important;
+    padding: 8px !important;
+    margin-top: -.5rem !important;  /* Same -8px pull as other section content */
+    margin-bottom: 0 !important;
     box-shadow: var(--shadow-1) !important;
     overflow: hidden !important;
 }
-/* And set the iframe inside that container to white so its body blends */
+/* Iframe inside the shelf — white background blends with shelf */
 [data-testid="stElementContainer"]:has(#scope-shelf-marker) + [data-testid="stElementContainer"] iframe {
     background: #FFFFFF !important;
     color-scheme: normal !important;
@@ -2375,7 +2397,13 @@ def page_trip():
             f'</div><div class="mf-body">', unsafe_allow_html=True)
 
     def mf_close():
-        st.markdown('</div></div>', unsafe_allow_html=True)
+        # Emit a hideable marker instead of orphan closing tags. The orphan
+        # closing-div tags don't actually close anything (the opening tags are
+        # in a different stElementContainer), so they're functionally useless
+        # but visually expensive — Streamlit's flex layout still allocates
+        # gap around the empty container. A marker we can target with
+        # display:none removes those ghost gaps entirely.
+        st.html('<i class="mf-close-marker" aria-hidden="true"></i>')
 
     # ── Optimize for ──
     cur_scope = st.session_state.get("t_scope", "Flight + Hotel")
