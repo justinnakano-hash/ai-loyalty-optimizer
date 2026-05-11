@@ -1,0 +1,16 @@
+# Streamlit theme — colors must match the design system in app.py.
+# Critically: backgroundColor controls the iframe body background for
+# custom components like st-clickable-images. Without this, iframes
+# render with a forced white background that can't be overridden by CSS.
+
+[theme]
+base = "light"
+backgroundColor = "#FAFAF7"
+secondaryBackgroundColor = "#F4F4F1"
+textColor = "#0A0A0B"
+primaryColor = "#0A0A0B"
+font = "sans-serif"
+
+[server]
+# Reduce noise in deployed environments
+headless = true
