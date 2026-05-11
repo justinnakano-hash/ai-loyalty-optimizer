@@ -1734,12 +1734,13 @@ def _render_results_desktop(r, params, is_mock=False):
     tagline = " &middot; ".join(tagline_parts)
 
     if params['include_flight']:
+        arrow = '&harr;' if params['is_roundtrip'] else '&rarr;'
         route_html = (
             f'<span>{rd.get("origin", params["origin_city"])}</span>'
-            f'<div class="route-line"></div>&rarr;'
-            + ('<div class="route-line"></div>&larr;' if params['is_roundtrip'] else '')
-            + ('<div class="route-line"></div>' if not params['is_roundtrip'] else '')
-            + f'<span>{rd.get("destination", params["dest_city"])}</span>'
+            f'<div class="route-line"></div>'
+            f'<span style="font-size:18px;color:var(--ink-4);">{arrow}</span>'
+            f'<div class="route-line"></div>'
+            f'<span>{rd.get("destination", params["dest_city"])}</span>'
         )
     else:
         route_html = f'<span>Hotel in {rd.get("destination", params["dest_city"])}</span>'
@@ -1922,11 +1923,14 @@ def _render_results_desktop(r, params, is_mock=False):
                 xfr_html += (
                     f'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;'
                     f'border-bottom:0.5px solid #f0f0f0;font-size:12px;">'
-                    f'<span style="font-weight:500;color:#111;flex:1.3;">{x.get("from_program","")}</span>'
-                    f'<span style="color:#bbb;">→</span>'
-                    f'<span style="color:#111;flex:1.3;">{x.get("to_program","")}</span>'
-                    f'<span style="color:#888;flex:.6;text-align:center;">{x.get("ratio","")}</span>'
-                    f'<span style="font-weight:500;color:{fc};flex:1;text-align:right;">'
+                    f'<span style="font-weight:500;color:#111;flex:1.3;min-width:0;'
+                    f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{x.get("from_program","")}</span>'
+                    f'<span style="color:#bbb;flex:0 0 auto;">→</span>'
+                    f'<span style="color:#111;flex:1.3;min-width:0;'
+                    f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{x.get("to_program","")}</span>'
+                    f'<span style="color:#888;flex:0 0 auto;text-align:center;font-variant-numeric:tabular-nums;">{x.get("ratio","")}</span>'
+                    f'<span style="font-weight:500;color:{fc};flex:1.4;min-width:0;text-align:right;'
+                    f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums;">'
                     f'Need {x.get("need",0):,} · have {x.get("have",0):,}</span>'
                     f'</div>'
                 )
@@ -1947,7 +1951,7 @@ def _render_results_desktop(r, params, is_mock=False):
                 f'<p style="font-size:12px;color:#888;margin:0;">Need {sec.get("required_pts",0):,} pts</p>'
                 f'</div>{pill_html}</div>'
                 f'<div style="padding:.9rem 1.1rem;">{bars_html}</div>'
-                f'{"<div style=padding:0 1.1rem .9rem;><p style=font-size:11px;font-weight:500;color:#888;margin:0 0 6px;>Transfer options to close the gap</p>" + xfr_html + "</div>" if xfr_html else ""}'
+                f'{("<div style=\"padding:0 1.1rem .9rem;\"><p style=\"font-size:11px;font-weight:500;color:#888;margin:0 0 6px;text-transform:uppercase;letter-spacing:.04em;\">Transfer options to close the gap</p>" + xfr_html + "</div>") if xfr_html else ""}'
                 f'<div style="display:flex;gap:8px;padding:.75rem 1.1rem;'
                 f'border-top:0.5px solid #e8e8e8;">{cpp_html}</div>'
                 f'{tip_html}'
