@@ -1698,46 +1698,49 @@ def page_trip():
             fg     = "#ffffff" if is_active else "#333333"
             ic_fg  = "#ffffff" if is_active else "#555555"
 
-            # Tabler-style icon paths
+            # Tabler-style icon paths (24x24 viewBox)
             PLANE_PATH = ('M16 10h4a2 2 0 0 1 0 4h-4l-4 7h-3l2-7h-4l-2 2H3l1-4'
                           ' l-1-4h2l2 2h4l-2-7h3z')
             BUILDING_PATH = ('M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01'
                              'M9 15v.01M9 18v.01')
 
+            # ViewBox 180x140 — near-square so icons stay proportionally large at any size
             if label == "Flight + Hotel":
-                # Two icons side by side
+                # Two icons side by side, scaled up
                 icons = (
-                    f'<g transform="translate(75 28)"><path d="{PLANE_PATH}" '
-                    f'fill="none" stroke="{ic_fg}" stroke-width="2" '
-                    f'stroke-linecap="round" stroke-linejoin="round"/></g>'
-                    f'<g transform="translate(115 28)"><path d="{BUILDING_PATH}" '
-                    f'fill="none" stroke="{ic_fg}" stroke-width="2" '
-                    f'stroke-linecap="round" stroke-linejoin="round"/></g>'
+                    f'<g transform="translate(40 30) scale(1.8)">'
+                    f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
+                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</g>'
+                    f'<g transform="translate(100 30) scale(1.8)">'
+                    f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
+                    f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</g>'
                 )
             elif label == "Flight":
                 icons = (
-                    f'<g transform="translate(95 22) scale(1.3)">'
+                    f'<g transform="translate(60 22) scale(2.6)">'
                     f'<path d="{PLANE_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="2" stroke-linecap="round" '
-                    f'stroke-linejoin="round"/></g>'
+                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</g>'
                 )
             else:  # Hotel
                 icons = (
-                    f'<g transform="translate(95 22) scale(1.3)">'
+                    f'<g transform="translate(60 22) scale(2.6)">'
                     f'<path d="{BUILDING_PATH}" fill="none" stroke="{ic_fg}" '
-                    f'stroke-width="2" stroke-linecap="round" '
-                    f'stroke-linejoin="round"/></g>'
+                    f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</g>'
                 )
 
             svg = (
-                f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 110" '
-                f'width="220" height="110">'
-                f'<rect x="2" y="2" width="216" height="106" rx="14" '
+                f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 140" '
+                f'width="180" height="140">'
+                f'<rect x="2" y="2" width="176" height="136" rx="14" '
                 f'fill="{bg}" stroke="{border}" stroke-width="2"/>'
                 f'{icons}'
-                f'<text x="110" y="92" text-anchor="middle" '
+                f'<text x="90" y="120" text-anchor="middle" '
                 f'font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" '
-                f'font-size="13" font-weight="600" fill="{fg}">{label}</text>'
+                f'font-size="14" font-weight="600" fill="{fg}">{label}</text>'
                 f'</svg>'
             )
             import base64
@@ -1755,6 +1758,8 @@ def page_trip():
                 "grid-template-columns": "1fr 1fr 1fr",
                 "gap": "10px",
                 "justify-content": "center",
+                "max-width": "520px",   # cap total width on desktop
+                "margin": "0 auto",     # center it within the section
             },
             img_style={
                 "cursor": "pointer",
