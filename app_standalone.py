@@ -869,7 +869,8 @@ div.m-cta button:active { transform: scale(.99); }
    right before the clickable_images call. CSS then targets the
    element-container immediately following the marker's container.
    ════════════════════════════════════════════════════════════════ */
-[data-testid="stElementContainer"]:has(#scope-shelf-marker) {
+[data-testid="stElementContainer"]:has(#scope-shelf-marker),
+[data-testid="stElementContainer"]:has(.mf-close-marker) {
     display: none !important;
 }
 [data-testid="stElementContainer"]:has(#scope-shelf-marker) + [data-testid="stElementContainer"] {
@@ -2358,7 +2359,12 @@ def page_trip():
             f'</div><div class="mf-body">', unsafe_allow_html=True)
 
     def mf_close():
-        st.markdown('</div></div>', unsafe_allow_html=True)
+        # Orphan </div></div> tags don't close anything (their opening tags
+        # are in a different stElementContainer), but Streamlit's flex layout
+        # still allocates a gap slot around the empty container. Emit a
+        # hideable marker instead so CSS can display:none it and remove
+        # the phantom gap between section content and the next section.
+        st.html('<i class="mf-close-marker" aria-hidden="true"></i>')
 
     # ── Optimize for ──
     cur_scope = st.session_state.get("t_scope", "Flight + Hotel")
