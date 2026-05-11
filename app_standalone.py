@@ -598,84 +598,53 @@ if "m_trip_type"    not in st.session_state: st.session_state.m_trip_type    = "
 
 # ─────────────────────────────────────────────
 #  PER-USER PROFILE PERSISTENCE
-#  Strategy: store a small UUID cookie in the browser (~36 chars), use that
-#  UUID as the key for a server-side JSON file `profile_<uuid>.json`.
-#  - Cookie read: from st.context.headers["Cookie"] (real HTTP header,
-#    no iframe sync timing issues)
-#  - Cookie write: tiny JS injection on first visit only
-#  - Data: lives on the server, isolated per browser/user
+#  Uses streamlit-cookies-manager with the proven ready() + save() pattern.
+#  A small UUID cookie identifies the browser; the actual profile data lives
+#  in a per-user JSON file on the server keyed by that UUID.
 # ─────────────────────────────────────────────
 import json as _json
 import uuid as _uuid
 
-USER_COOKIE_NAME = "app_user_id"
-USER_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+_USER_COOKIE_NAME = "loyalty_app_uid"
+_COOKIES_OK = True
+_cookies = None
 
-def _parse_cookie_header(header):
-    """Parse 'name1=val1; name2=val2' into a dict."""
-    out = {}
-    if not header:
-        return out
-    for part in header.split(";"):
-        k, _, v = part.strip().partition("=")
-        if k:
-            out[k] = v
-    return out
+try:
+    from streamlit_cookies_manager import CookieManager
+    _cookies = CookieManager()
+    # ready() returns False on the very first render (iframe is still loading).
+    # st.stop() halts the script; Streamlit reruns when the iframe reports back,
+    # and on that next run ready() returns True.
+    if not _cookies.ready():
+        st.markdown(
+            '<div style="padding:1rem;color:#888;font-size:14px;">Loading…</div>',
+            unsafe_allow_html=True,
+        )
+        st.stop()
+except Exception:
+    _COOKIES_OK = False
 
 def _get_user_id():
-    """
-    Return the user's persistent ID:
-    1. If cookie present in request headers → use it
-    2. Else if session_state has one from earlier this session → use it
-    3. Else generate a new UUID and stash in session_state
-    """
-    # Try the request's Cookie header (set by browser on every request)
-    try:
-        cookies = _parse_cookie_header(st.context.headers.get("Cookie", ""))
-        if USER_COOKIE_NAME in cookies and cookies[USER_COOKIE_NAME]:
-            return cookies[USER_COOKIE_NAME]
-    except Exception:
-        pass
-    # Fall back to session-state UUID (used in the first session before the
-    # cookie has been set, then again on subsequent visits via the header)
-    if not st.session_state.get("_uid"):
-        st.session_state["_uid"] = _uuid.uuid4().hex
-    return st.session_state["_uid"]
+    """Return the persistent per-browser ID. Set the cookie if it's missing."""
+    if not _COOKIES_OK or _cookies is None:
+        # Cookies unavailable — fall back to a per-process default so the app
+        # still works (data persists within this server process but not across
+        # browsers). Better than crashing.
+        if not st.session_state.get("_uid"):
+            st.session_state["_uid"] = _uuid.uuid4().hex
+        return st.session_state["_uid"]
+
+    existing = _cookies.get(_USER_COOKIE_NAME)
+    if existing:
+        return existing
+
+    # No cookie yet — mint a UUID and persist it
+    new_id = _uuid.uuid4().hex
+    _cookies[_USER_COOKIE_NAME] = new_id
+    _cookies.save()  # IMPORTANT: must call save() or the cookie isn't written
+    return new_id
 
 USER_ID = _get_user_id()
-
-# Set the cookie if it's not yet in request headers. JS runs in the iframe
-# but writes to the parent's cookie jar (same origin → same cookie store).
-def _ensure_user_cookie_set():
-    try:
-        cookies = _parse_cookie_header(st.context.headers.get("Cookie", ""))
-        if USER_COOKIE_NAME in cookies:
-            return  # already set, nothing to do
-    except Exception:
-        return  # if we can't read headers, don't try to write
-    # Cookie not yet set on browser — inject JS to set it
-    from streamlit import components as _components
-    _components.v1.html(
-        f"""<script>
-(function(){{
-  try {{
-    var doc = window.top.document;
-    if (!doc.cookie.match(/{USER_COOKIE_NAME}=/)) {{
-      doc.cookie = "{USER_COOKIE_NAME}={USER_ID}; path=/; max-age={USER_COOKIE_MAX_AGE}; SameSite=Lax";
-    }}
-  }} catch(e) {{
-    // Sandbox blocked window.top access — fall back to iframe's own doc.
-    // Since iframe is same-origin, this writes to the same cookie jar.
-    try {{
-      document.cookie = "{USER_COOKIE_NAME}={USER_ID}; path=/; max-age={USER_COOKIE_MAX_AGE}; SameSite=Lax";
-    }} catch(e2) {{}}
-  }}
-}})();
-</script>""",
-        height=0,
-    )
-
-_ensure_user_cookie_set()
 
 # Per-user JSON file on disk
 def _profile_path_for(user_id):
@@ -683,7 +652,7 @@ def _profile_path_for(user_id):
 
 @st.cache_resource
 def _profile_store_for(user_id):
-    """Per-user shared dict (one per UUID), loaded from disk on first call."""
+    """Per-user shared dict, loaded from disk on first call per process."""
     path = _profile_path_for(user_id)
     if path.exists():
         try:
@@ -706,7 +675,7 @@ def save_profile_to_cookie():
         store.update(st.session_state.profile)
         path.write_text(_json.dumps(store, indent=2))
     except Exception:
-        pass  # disk write failure is non-fatal
+        pass
 
 # Hydrate this session's profile from the per-user store on first run
 if not st.session_state.get("_profile_loaded"):
