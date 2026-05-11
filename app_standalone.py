@@ -484,7 +484,7 @@ button:focus, .stButton button:focus {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: .9rem 1.1rem;
+    padding: .55rem 1rem;
     font-size: 14px;
 }
 .mf-header-label {
