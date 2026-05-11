@@ -198,6 +198,10 @@ button[kind="primary"], .stButton button[kind="primary"] {
     box-shadow: none !important;
     transition: background var(--t-fast), border-color var(--t-fast) !important;
 }
+/* Force white text on all inner elements Streamlit wraps button labels in */
+button[kind="primary"] *, .stButton button[kind="primary"] * {
+    color: #fff !important;
+}
 button[kind="primary"]:hover, .stButton button[kind="primary"]:hover {
     background: var(--brand-hover) !important;
     border-color: var(--brand-hover) !important;
@@ -837,6 +841,22 @@ div.m-cta button:active { transform: scale(.99); }
 .m-hide-on-mobile { display: none; }
 @media (min-width: 769px) {
     .m-hide-on-mobile { display: block; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   COMPONENT IFRAMES — clickable_images, etc.
+   Make iframe and its wrapper transparent so the page canvas shows.
+   ════════════════════════════════════════════════════════════════ */
+[data-testid="stIFrame"],
+[data-testid="stCustomComponentV1"],
+iframe[title="streamlit_clickable_images.clickable_images"] {
+    background: transparent !important;
+    color-scheme: normal !important;
+}
+[data-testid="stIFrame"] iframe,
+iframe[title="streamlit_clickable_images.clickable_images"] {
+    background: transparent !important;
+    border: none !important;
 }
 </style>
 """)
