@@ -1955,14 +1955,24 @@ def _render_results_desktop(r, params, is_mock=False):
             best_cpp = max((c.get("cpp",0) for c in sec.get("cpp_alternatives",[])), default=0)
             for c in sec.get("cpp_alternatives",[]):
                 is_best = c.get("cpp",0) == best_cpp
-                bg  = "#e6f4ea" if is_best else "#f7f7f7"
-                fc  = "#1e5c2a" if is_best else "#555"
-                badge = '<span style="font-size:9px;font-weight:700;color:#1e5c2a;text-transform:uppercase;letter-spacing:.04em;display:block;">Best value</span>' if is_best else ""
+                bg       = "#e6f4ea" if is_best else "#f6f6f3"
+                lbl_c    = "#1e5c2a" if is_best else "#555"
+                price_c  = "#1e5c2a" if is_best else "#111"
+                # Reserve badge slot on every card so labels start at the same y.
+                # Non-best cards just hide the text but keep the layout space.
+                badge_vis = "visible" if is_best else "hidden"
                 cpp_html += (
-                    f'<div style="flex:1;background:{bg};border-radius:8px;padding:.65rem .85rem;">'
-                    f'{badge}'
-                    f'<p style="font-size:11px;color:{fc};margin:0 0 2px;">{c.get("label","")}</p>'
-                    f'<p style="font-size:18px;font-weight:500;color:{fc};margin:0;">{c.get("cpp",0):.1f}¢/pt</p>'
+                    f'<div style="flex:1;background:{bg};border-radius:8px;'
+                    f'padding:.7rem .85rem;display:flex;flex-direction:column;'
+                    f'min-width:0;">'
+                    f'<span style="visibility:{badge_vis};font-size:9px;font-weight:700;'
+                    f'color:#1e5c2a;text-transform:uppercase;letter-spacing:.05em;'
+                    f'line-height:1.2;margin-bottom:5px;">Best value</span>'
+                    f'<p style="font-size:11px;color:{lbl_c};margin:0 0 8px;'
+                    f'line-height:1.4;flex:1;">{c.get("label","")}</p>'
+                    f'<p style="font-size:18px;font-weight:500;color:{price_c};'
+                    f'margin:0;font-variant-numeric:tabular-nums;line-height:1;">'
+                    f'{c.get("cpp",0):.1f}¢/pt</p>'
                     f'</div>'
                 )
             xfr_html = ""
