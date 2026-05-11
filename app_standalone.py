@@ -146,6 +146,31 @@ html, body, .stApp, [class*="st-emotion-cache"] {
 }
 .stApp { background: var(--canvas) !important; }
 
+/* Material icon spans need their own font to render glyphs — restore them
+   so they don't fall back to Inter text (which has no icon glyphs and shows
+   the icon name as literal text like "arrow_right"). */
+.material-symbols-outlined,
+.material-symbols-rounded,
+.material-symbols-sharp,
+.material-icons,
+[class*="material-symbols"],
+[class*="material-icons"],
+span[data-testid="stIconMaterial"],
+span[data-testid*="Icon"] {
+    font-family: 'Material Symbols Outlined', 'Material Symbols Rounded',
+                 'Material Icons', sans-serif !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    white-space: nowrap !important;
+    word-wrap: normal !important;
+    direction: ltr !important;
+    -webkit-font-feature-settings: 'liga' !important;
+    -webkit-font-smoothing: antialiased !important;
+    font-feature-settings: 'liga' !important;
+}
+
 .block-container {
     max-width: 880px !important;
     padding: 2.25rem 1.5rem 4rem !important;
